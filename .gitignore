@@ -26,3 +26,6 @@ sleep_care.db
 
 # Teaching materials
 *.pdf
+
+# WeChat miniprogram private config
+project.private.config.json
