@@ -12,7 +12,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-const { initDatabase, get, run, closeDatabase } = require('./db/connection');
+const { initDatabase, get, run, all, closeDatabase, saveDatabase } = require('./db/connection');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -54,7 +54,11 @@ app.get('/', (req, res) => {
         endpoints: [
             'POST /api/v1/auth/register',
             'POST /api/v1/auth/login',
-            'GET  /api/v1/users/me'
+            'GET  /api/v1/users/me',
+            'GET  /api/v1/devices/list',
+            'POST /api/v1/devices/add',
+            'PUT  /api/v1/devices/:id',
+            'DELETE /api/v1/devices/:id'
         ]
     }, 'Sleep Care Backend is running');
 });
@@ -207,6 +211,182 @@ app.get('/api/v1/users/me', authMiddleware, (req, res) => {
         return fail(res, '用户不存在', 404);
     }
     return ok(res, { user });
+});
+
+// ============ 设备管理 CRUD 接口 ============
+
+/**
+ * 生成虚拟设备序列号（VIR + 16位随机字符）
+ * @returns {string} 格式：VIR + 16位十六进制
+ */
+function generateVirtualSerialNo() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = 'VIR';
+    for (let i = 0; i < 16; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+}
+
+/**
+ * 生成设备ID（32位字符串）
+ * @returns {string}
+ */
+function generateDeviceId() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < 24; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return 'DEV_' + result;
+}
+
+// GET /api/v1/devices/list - 查询当前用户的设备列表（按 created_at 降序）
+app.get('/api/v1/devices/list', authMiddleware, (req, res) => {
+    try {
+        const devices = all(
+            `SELECT device_id, serial_no, name, is_virtual, firmware_version,
+                    last_active_time, created_at, updated_at
+             FROM devices WHERE user_id = ?
+             ORDER BY created_at DESC`,
+            [req.user.user_id]
+        );
+        return ok(res, { list: devices });
+    } catch (err) {
+        console.error('[devices/list] error:', err);
+        return fail(res, '查询设备列表失败', 500, 500);
+    }
+});
+
+// POST /api/v1/devices/add - 添加设备（支持虚拟设备）
+app.post('/api/v1/devices/add', authMiddleware, async (req, res) => {
+    try {
+        const { name, is_virtual } = req.body || {};
+        const virtual = Number.isInteger(is_virtual) ? is_virtual : 0;
+
+        // 参数校验
+        if (!name || typeof name !== 'string' || name.trim().length === 0) {
+            return fail(res, '设备名称不能为空', 400);
+        }
+
+        // 检查用户设备数量上限（最多10台）
+        const countResult = get('SELECT COUNT(*) AS cnt FROM devices WHERE user_id = ?', [req.user.user_id]);
+        if (countResult && countResult.cnt >= 10) {
+            return fail(res, '设备数量已达上限（10台）', 400);
+        }
+
+        // 生成设备信息
+        const deviceId = generateDeviceId();
+        let serialNo;
+
+        if (virtual === 1) {
+            serialNo = generateVirtualSerialNo(); // VIR + 16位
+        } else {
+            serialNo = generateDeviceId().replace('DEV_', 'REAL_');
+        }
+
+        // 插入设备记录
+        run(
+            `INSERT INTO devices (device_id, user_id, serial_no, name, is_virtual, firmware_version)
+             VALUES (?, ?, ?, ?, ?, 'V1.0.0')`,
+            [deviceId, req.user.user_id, serialNo, name.trim(), virtual]
+        );
+
+        // 立即保存数据库
+        saveDatabase();
+
+        // 返回新创建的设备
+        const newDevice = get(
+            `SELECT device_id, serial_no, name, is_virtual, firmware_version,
+                    last_active_time, created_at, updated_at
+             FROM devices WHERE device_id = ?`,
+            [deviceId]
+        );
+
+        return ok(res, { device: newDevice }, '设备添加成功');
+    } catch (err) {
+        console.error('[devices/add] error:', err);
+        return fail(res, '添加设备失败', 500, 500);
+    }
+});
+
+// PUT /api/v1/devices/:id - 更新设备信息
+app.put('/api/v1/devices/:id', authMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name } = req.body || {};
+
+        // 参数校验
+        if (!id || typeof id !== 'string' || id.trim() === '') {
+            return fail(res, '设备ID不能为空', 400);
+        }
+        if (!name || typeof name !== 'string' || name.trim().length === 0) {
+            return fail(res, '设备名称不能为空', 400);
+        }
+
+        // 验证设备归属
+        const device = get(
+            'SELECT device_id FROM devices WHERE device_id = ? AND user_id = ?',
+            [id.trim(), req.user.user_id]
+        );
+        if (!device) {
+            return fail(res, '设备不存在或无权操作', 404);
+        }
+
+        // 执行更新
+        run(
+            "UPDATE devices SET name = ?, updated_at = datetime('now') WHERE device_id = ?",
+            [name.trim(), id.trim()]
+        );
+
+        // 立即保存数据库
+        saveDatabase();
+
+        // 返回更新后的设备
+        const updatedDevice = get(
+            `SELECT device_id, serial_no, name, is_virtual, firmware_version,
+                    last_active_time, created_at, updated_at
+             FROM devices WHERE device_id = ?`,
+            [id.trim()]
+        );
+
+        return ok(res, { device: updatedDevice }, '设备更新成功');
+    } catch (err) {
+        console.error('[devices/update] error:', err);
+        return fail(res, '更新设备失败', 500, 500);
+    }
+});
+
+// DELETE /api/v1/devices/:id - 删除设备
+app.delete('/api/v1/devices/:id', authMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 参数校验
+        if (!id || typeof id !== 'string' || id.trim() === '') {
+            return fail(res, '设备ID不能为空', 400);
+        }
+
+        // 验证设备归属
+        const device = get(
+            'SELECT device_id FROM devices WHERE device_id = ? AND user_id = ?',
+            [id.trim(), req.user.user_id]
+        );
+        if (!device) {
+            return fail(res, '设备不存在或无权操作', 404);
+        }
+
+        // 执行删除
+        run('DELETE FROM devices WHERE device_id = ? AND user_id = ?', [id.trim(), req.user.user_id]);
+
+        // 立即保存数据库
+        saveDatabase();
+
+        return ok(res, null, '设备删除成功');
+    } catch (err) {
+        console.error('[devices/delete] error:', err);
+        return fail(res, '删除设备失败', 500, 500);
+    }
 });
 
 // ============ 全局错误处理 ============

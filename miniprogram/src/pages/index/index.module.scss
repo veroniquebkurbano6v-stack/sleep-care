@@ -1,0 +1,6 @@
+@use '@/styles/variables.scss' as *;
+
+.indexPage {
+  min-height: 100vh;
+  @include flex-center;
+}

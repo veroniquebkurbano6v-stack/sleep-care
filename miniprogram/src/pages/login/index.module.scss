@@ -1,0 +1,121 @@
+@use '@/styles/variables.scss' as *;
+
+.loginPage {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #4a6cf7 0%, #7c8cff 50%, #f0f2f8 55%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: $spacing-xl $page-padding;
+}
+
+.logoArea {
+  margin-top: 120rpx;
+  text-align: center;
+}
+
+.logoIcon {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: $radius-lg;
+  background: rgba(255, 255, 255, 0.2);
+  @include flex-center;
+  margin-bottom: $spacing-md;
+}
+
+.logoText {
+  color: $color-text-white;
+  font-size: $font-size-xxl;
+  font-weight: $font-weight-bold;
+  letter-spacing: 4rpx;
+}
+
+.logoSubtext {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: $font-size-sm;
+  margin-top: $spacing-xs;
+}
+
+.formCard {
+  width: 100%;
+  max-width: $max-content-width;
+  background: $color-bg-card;
+  border-radius: $radius-xl;
+  padding: $spacing-xl $spacing-lg;
+  box-shadow: $shadow-float;
+  margin-top: 64rpx;
+}
+
+.formTitle {
+  font-size: $font-size-xl;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+  margin-bottom: $spacing-xl;
+  text-align: center;
+}
+
+.inputGroup {
+  margin-bottom: $spacing-lg;
+}
+
+.inputLabel {
+  font-size: $font-size-sm;
+  color: $color-text-secondary;
+  margin-bottom: $spacing-sm;
+  font-weight: $font-weight-medium;
+}
+
+.inputField {
+  width: 100%;
+  height: 88rpx;
+  padding: 0 $spacing-md;
+  border: 2rpx solid $color-border;
+  border-radius: $radius-md;
+  font-size: $font-size-md;
+  color: $color-text-primary;
+  box-sizing: border-box;
+  transition: border-color $transition-base;
+
+  &:focus-within {
+    border-color: $color-primary;
+  }
+}
+
+.submitBtn {
+  @include button-reset;
+  width: 100%;
+  height: $button-height-lg;
+  background: linear-gradient(135deg, $color-primary 0%, $color-primary-light 100%);
+  color: $color-text-white;
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+  border-radius: $radius-button;
+  margin-top: $spacing-xl;
+  letter-spacing: 4rpx;
+
+  &:active {
+    opacity: 0.9;
+    transform: scale(0.98);
+    transition: all $transition-fast;
+  }
+
+  &.disabled {
+    opacity: 0.5;
+  }
+}
+
+.switchMode {
+  margin-top: $spacing-lg;
+  text-align: center;
+}
+
+.switchBtn {
+  @include button-reset;
+  color: $color-primary;
+  font-size: $font-size-sm;
+  padding: $spacing-sm $spacing-md;
+
+  &:active {
+    opacity: 0.7;
+  }
+}
