@@ -16,3 +16,6 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+
+# Taro Preview
+.pai/
