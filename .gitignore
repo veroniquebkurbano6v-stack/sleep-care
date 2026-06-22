@@ -19,3 +19,10 @@ Thumbs.db
 
 # Taro Preview
 .pai/
+
+# Database (runtime data)
+*.db
+sleep_care.db
+
+# Teaching materials
+*.pdf
