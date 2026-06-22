@@ -1,0 +1,198 @@
+/**
+ * 首页 - 睡眠报告展示
+ * 展示睡眠评分、总时长、深睡比例、觉醒次数等核心指标
+ * 支持下拉刷新
+ * @author Developer
+ * @created 2026-06-22
+ */
+
+import React, { useState, useEffect } from 'react';
+import { View, Text } from '@tarojs/components';
+import Taro from '@tarojs/taro';
+import { request } from '@/services/api';
+import { isLoggedIn } from '@/utils/auth';
+import type { ApiResponse } from '@/types';
+
+/** 睡眠报告数据类型 */
+interface SleepReport {
+  report_id: number;
+  report_date: string;
+  sleep_score: number;
+  total_sleep_minutes: number;
+  deep_sleep_minutes: number;
+  rem_sleep_minutes: number;
+  light_sleep_minutes: number;
+  awake_minutes: number;
+  awake_count: number;
+  avg_heart_rate: number;
+}
+
+const HomePage = () => {
+  const [report, setReport] = useState<SleepReport | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  /** 格式化分钟数为 "X小时Y分" */
+  const formatDuration = (minutes: number): string => {
+    if (!minutes) return '0分';
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return h > 0 ? `${h}h${m > 0 ? m + 'm' : ''}` : `${m}min`;
+  };
+
+  /** 获取睡眠报告 */
+  const fetchReport = async (date?: string) => {
+    setLoading(true);
+    try {
+      const data = await request<{ report: SleepReport }>(
+        'GET',
+        `/api/sleep/report/daily${date ? `?date=${date}` : ''}`
+      );
+      setReport(data.report);
+      console.log('[Home] 报告加载成功', data.report?.sleep_score);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '加载失败';
+      console.error('[Home]', msg);
+      Taro.showToast({ title: msg, icon: 'none' });
+    } finally {
+      setLoading(false);
+      Taro.stopPullDownRefresh();
+    }
+  };
+
+  /** 下拉刷新 */
+  const onPullDownRefresh = () => {
+    fetchReport();
+  };
+
+  useEffect(() => {
+    if (!isLoggedIn()) {
+      Taro.redirectTo({ url: '/pages/login/index' });
+      return;
+    }
+    fetchReport();
+  }, []);
+
+  /** 计算深睡占比 */
+  const getDeepRatio = (): string => {
+    if (!report || !report.total_sleep_minutes) return '0%';
+    const ratio = ((report.deep_sleep_minutes / report.total_sleep_minutes) * 100).toFixed(1);
+    return `${ratio}%`;
+  };
+
+  /** 评分等级描述 */
+  const getScoreDesc = (score: number): string => {
+    if (score >= 90) return '睡眠质量优秀';
+    if (score >= 80) return '睡眠质量良好';
+    if (score >= 70) return '睡眠质量一般';
+    return '需要改善睡眠';
+  };
+
+  /** 获取今天的日期文字 */
+  const getDateText = (): string => {
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const day = now.getDate();
+    const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    return `${month}月${day}日 ${weekDays[now.getDay()]}`;
+  };
+
+  // 加载中
+  if (loading && !report) {
+    return (
+      <View className={styles.homePage}>
+        <View className={styles.loadingState}>
+          <Text className={styles.loadingText}>正在加载睡眠数据...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View className={styles.homePage} onPullDownRefresh={onPullDownRefresh}>
+      {/* 头部 */}
+      <View className={styles.headerArea}>
+        <Text className={styles.greeting}>今日睡眠</Text>
+        <Text className={styles.dateLabel}>{getDateText()}</Text>
+      </View>
+
+      {/* 睡眠评分卡片 */}
+      <View className={styles.scoreCard}>
+        <Text className={styles.scoreLabel}>睡眠综合评分</Text>
+        <Text className={styles.scoreNumber}>{report?.sleep_score ?? '--'}</Text>
+        <Text className={styles.scoreDesc}>{report ? getScoreDesc(report.sleep_score) : ''}</Text>
+      </View>
+
+      {/* 核心指标网格 */}
+      <View className={styles.metricsGrid}>
+        {/* 总时长 */}
+        <View className={styles.metricCard}>
+          <View className={`${styles.metricIcon} ${styles['metricIcon--time']}`}>
+            <Text>⏱</Text>
+          </View>
+          <Text className={styles.metricValue}>
+            {formatDuration(report?.total_sleep_minutes ?? 0)}
+          </Text>
+          <Text className={styles.metricLabel}>总睡眠时长</Text>
+        </View>
+
+        {/* 觉醒次数 */}
+        <View className={styles.metricCard}>
+          <View className={`${styles.metricIcon} ${styles['metricIcon--awake']}`}>
+            <Text>🔔</Text>
+          </View>
+          <Text className={styles.metricValue}>
+            {report?.awake_count ?? 0}
+            <Text className={styles.metricUnit}>次</Text>
+          </Text>
+          <Text className={styles.metricLabel}>夜间觉醒次数</Text>
+        </View>
+
+        {/* 深睡时长 */}
+        <View className={styles.metricCard}>
+          <View className={`${styles.metricIcon} ${styles['metricIcon--deep']}`}>
+            <Text>🌙</Text>
+          </View>
+          <Text className={styles.metricValue}>
+            {formatDuration(report?.deep_sleep_minutes ?? 0)}
+          </Text>
+          <Text className={styles.metricLabel}>深睡时长</Text>
+        </View>
+
+        {/* REM时长 */}
+        <View className={styles.metricCard}>
+          <View className={`${styles.metricIcon} ${styles['metricIcon--rem']}`}>
+            <Text>💜</Text>
+          </View>
+          <Text className={styles.metricValue}>
+            {formatDuration(report?.rem_sleep_minutes ?? 0)}
+          </Text>
+          <Text className={styles.metricLabel}>REM 时长</Text>
+        </View>
+      </View>
+
+      {/* 深睡比例进度条 */}
+      <View className={styles.deepRatioSection}>
+        <View className={styles.ratioHeader}>
+          <Text className={styles.ratioTitle}>深睡比例</Text>
+          <Text className={styles.ratioPercent}>{getDeepRatio()}</Text>
+        </View>
+        <View className={styles.ratioTrack}>
+          <View
+            className={styles.ratioFill}
+            style={{
+              width: report && report.total_sleep_minutes
+                ? `${(report.deep_sleep_minutes / report.total_sleep_minutes) * 100}%`
+                : '0%',
+            }}
+          />
+        </View>
+        <View className={styles.ratioLabels}>
+          <Text>建议值：13%-23%</Text>
+          <Text>{getDeepRatio()}</Text>
+        </View>
+      </View>
+    </View>
+  );
+};
+
+export default HomePage;

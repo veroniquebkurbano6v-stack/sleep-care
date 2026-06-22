@@ -6,6 +6,7 @@
 
 export default defineAppConfig({
   pages: [
+    'pages/home/index',
     'pages/login/index',
     'pages/devices/index',
     'pages/mine/index',
@@ -17,6 +18,7 @@ export default defineAppConfig({
     backgroundColor: '#ffffff',
     borderStyle: 'black',
     list: [
+      { pagePath: 'pages/home/index', text: '首页' },
       { pagePath: 'pages/devices/index', text: '设备' },
       { pagePath: 'pages/mine/index', text: '我的' },
     ],

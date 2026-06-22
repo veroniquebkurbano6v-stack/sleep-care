@@ -50,7 +50,7 @@ const LoginPage = () => {
         saveAuthInfo(data.token, data.user);
         Taro.showToast({ title: '登录成功', icon: 'success' });
         setTimeout(() => {
-          Taro.switchTab({ url: '/pages/devices/index' });
+          Taro.switchTab({ url: '/pages/home/index' });
         }, 800);
       } else {
         // 注册

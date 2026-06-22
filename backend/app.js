@@ -58,7 +58,8 @@ app.get('/', (req, res) => {
             'GET  /api/v1/devices/list',
             'POST /api/v1/devices/add',
             'PUT  /api/v1/devices/:id',
-            'DELETE /api/v1/devices/:id'
+            'DELETE /api/v1/devices/:id',
+            'GET  /api/sleep/report/daily'
         ]
     }, 'Sleep Care Backend is running');
 });
@@ -386,6 +387,201 @@ app.delete('/api/v1/devices/:id', authMiddleware, async (req, res) => {
     } catch (err) {
         console.error('[devices/delete] error:', err);
         return fail(res, '删除设备失败', 500, 500);
+    }
+});
+
+// ============ 睡眠报告接口 ============
+
+/**
+ * 确定性伪随机数生成器（基于种子）
+ * 同一用户+同一设备+同一天 → 结果完全一致
+ * @param {string} seed 种子字符串
+ * @returns {function} 返回一个 [0,1) 范围的伪随机函数
+ */
+function seededRandom(seed) {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+        const char = seed.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash |= 0; // 转为32位整数
+    }
+    return function () {
+        // Mulberry32 algorithm
+        hash += 0x6D2B79F5;
+        let t = hash;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+/**
+ * 根据种子生成模拟睡眠数据
+ * 数据符合生理规律：总睡眠 360-480 分钟，深睡占比 13-23%，REM 占比 18-25%
+ * @param {string} seed 种子（user_id + device_id + date）
+ * @returns {object} 模拟的睡眠报告数据
+ */
+function generateMockSleepData(seed) {
+    const rng = seededRandom(seed);
+
+    // 总睡眠时长：360-480 分钟（6-8小时），偏向正常分布
+    const totalMin = Math.floor(380 + rng() * 100);
+
+    // 各阶段比例（深睡 13-23%，REM 18-25%，浅睡 40-55%）
+    const deepRatio = 0.13 + rng() * 0.10;
+    const remRatio = 0.18 + rng() * 0.07;
+    const lightRatio = 0.42 + rng() * 0.13;
+
+    // 归一化确保总和为 totalMin
+    const rawTotal = deepRatio + remRatio + lightRatio;
+    const deepMin = Math.round(totalMin * (deepRatio / rawTotal));
+    const remMin = Math.round(totalMin * (remRatio / rawTotal));
+    const lightMin = totalMin - deepMin - remMin;
+
+    // 觉醒时间：10-45 分钟
+    const awakeMin = Math.floor(12 + rng() * 33);
+
+    // 觉醒次数：2-8 次
+    const awakeCount = Math.floor(2 + rng() * 7);
+
+    // 平均心率：58-72 bpm
+    const avgHR = Math.round((58 + rng() * 14) * 100) / 100;
+
+    // 睡眠评分：根据各阶段质量计算（60-95分）
+    const qualityScore = Math.min(95, Math.max(
+        50,
+        Math.round(70 - awakeCount * 3 + (deepRatio * 80) + (remRatio * 30))
+    ));
+
+    // 生成心率曲线（每分钟一个点，采样为每小时一个点）
+    const heartRateCurve = [];
+    for (let i = 0; i < totalMin; i += 60) {
+        heartRateCurve.push(Math.round(avgHR + (rng() - 0.5) * 8));
+    }
+
+    // 生成睡眠阶段序列（每30秒一个值：0=清醒,1=浅睡,2=深睡,3=REM）
+    const stageCurve = [];
+    const totalEpochs = Math.floor(totalMin * 2); // 每30秒一个epoch
+    let currentStage = 1; // 从浅睡开始
+    for (let i = 0; i < totalEpochs; i++) {
+        if (i < 20) { stageCurve.push(0); continue; } // 前10分钟清醒（入睡潜伏期）
+        // 阶段转移概率模型
+        const r = rng();
+        if (currentStage === 1 && r < 0.08) { currentStage = 2; }
+        else if (currentStage === 2 && r < 0.06) { currentStage = 3; }
+        else if (currentStage === 3 && r < 0.05) { currentStage = 1; }
+        else if (currentStage === 1 && r < 0.03) { currentStage = 0; } // 偶尔觉醒
+        else if (currentStage === 0 && r < 0.85) { currentStage = 1; }
+        stageCurve.push(currentStage);
+    }
+
+    // 噪音曲线（每小时一个点，单位 dB）
+    const noiseCurve = [];
+    for (let i = 0; i < 24; i++) {
+        noiseCurve.push(Math.round(28 + rng() * 22));
+    }
+
+    return {
+        sleep_score: qualityScore,
+        total_sleep_minutes: totalMin,
+        deep_sleep_minutes: deepMin,
+        rem_sleep_minutes: remMin,
+        light_sleep_minutes: lightMin,
+        awake_minutes: awakeMin,
+        awake_count: awakeCount,
+        avg_heart_rate: avgHR,
+        heart_rate_json: JSON.stringify(heartRateCurve),
+        respiration_json: JSON.stringify(heartRateCurve.map(hr => Math.round(hr / 4))),
+        sleep_stages_json: JSON.stringify(stageCurve),
+        noise_json: JSON.stringify(noiseCurve),
+    };
+}
+
+// GET /api/sleep/report/daily - 查询/生成每日睡眠报告（先查后插模式）
+app.get('/api/sleep/report/daily', authMiddleware, (req, res) => {
+    try {
+        const { date } = req.query || {};
+        const reportDate = date || new Date().toISOString().slice(0, 10); // 默认今天
+
+        // 参数校验：日期格式 YYYY-MM-DD
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
+            return fail(res, '日期格式错误，请使用 YYYY-MM-DD', 400);
+        }
+
+        // 步骤1：查询该用户是否已有该日期的报告
+        const existingReport = get(
+            `SELECT report_id, user_id, device_id, report_date, sleep_score,
+                    total_sleep_minutes, deep_sleep_minutes, rem_sleep_minutes,
+                    light_sleep_minutes, awake_minutes, awake_count, avg_heart_rate,
+                    heart_rate_json, sleep_stages_json, noise_json, created_at
+             FROM sleep_reports WHERE user_id = ? AND report_date = ?`,
+            [req.user.user_id, reportDate]
+        );
+
+        // 步骤2：如果存在，直接返回
+        if (existingReport) {
+            return ok(res, { report: existingReport });
+        }
+
+        // 步骤3：不存在则获取用户的一台设备作为关联设备
+        const device = get(
+            'SELECT device_id FROM devices WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+            [req.user.user_id]
+        );
+
+        if (!device) {
+            return fail(res, '暂无绑定设备，无法生成报告', 400);
+        }
+
+        // 步骤4：使用确定性伪随机函数生成模拟数据
+        // 种子 = user_id + device_id + date，保证同一用户同一设备同一天结果完全一致
+        const seed = `${req.user.user_id}_${device.device_id}_${reportDate}`;
+        const mockData = generateMockSleepData(seed);
+
+        // 步骤5：插入数据库
+        run(
+            `INSERT INTO sleep_reports (
+                user_id, device_id, report_date, sleep_score,
+                total_sleep_minutes, deep_sleep_minutes, rem_sleep_minutes,
+                light_sleep_minutes, awake_minutes, awake_count, avg_heart_rate,
+                heart_rate_json, respiration_json, sleep_stages_json, noise_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                req.user.user_id,
+                device.device_id,
+                reportDate,
+                mockData.sleep_score,
+                mockData.total_sleep_minutes,
+                mockData.deep_sleep_minutes,
+                mockData.rem_sleep_minutes,
+                mockData.light_sleep_minutes,
+                mockData.awake_minutes,
+                mockData.awake_count,
+                mockData.avg_heart_rate,
+                mockData.heart_rate_json,
+                mockData.respiration_json,
+                mockData.sleep_stages_json,
+                mockData.noise_json,
+            ]
+        );
+
+        // 步骤6：立即持久化到磁盘
+        saveDatabase();
+
+        // 步骤7：查询并返回新创建的报告
+        const newReport = get(
+            `SELECT report_id, user_id, device_id, report_date, sleep_score,
+                    total_sleep_minutes, deep_sleep_minutes, rem_sleep_minutes,
+                    light_sleep_minutes, awake_minutes, awake_count, avg_heart_rate,
+                    heart_rate_json, sleep_stages_json, noise_json, created_at
+             FROM sleep_reports WHERE user_id = ? AND report_date = ?`,
+            [req.user.user_id, reportDate]
+        );
+
+        return ok(res, { report: newReport }, '睡眠报告已生成');
+    } catch (err) {
+        console.error('[sleep/report/daily] error:', err);
+        return fail(res, '获取睡眠报告失败', 500, 500);
     }
 });
 

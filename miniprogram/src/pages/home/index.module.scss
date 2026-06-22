@@ -1,0 +1,166 @@
+@use '@/styles/variables.scss' as *;
+
+.homePage {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #4a6cf7 0%, #6b8cff 40%, $color-bg-page 42%);
+  padding-bottom: $spacing-xl;
+}
+
+/* 头部区域 */
+.headerArea {
+  padding: $spacing-xl $page-padding $spacing-xxl;
+}
+
+.greeting {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: $font-size-sm;
+  margin-bottom: $spacing-xs;
+}
+
+.dateLabel {
+  color: $color-text-white;
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+}
+
+/* 睡眠评分卡片 */
+.scoreCard {
+  margin: 0 $page-padding;
+  background: $color-bg-card;
+  border-radius: $radius-xl;
+  padding: $spacing-xl;
+  box-shadow: $shadow-float;
+  text-align: center;
+
+  .scoreLabel {
+    font-size: $font-size-sm;
+    color: $color-text-tertiary;
+    margin-bottom: $spacing-sm;
+  }
+
+  .scoreNumber {
+    font-size: 96rpx;
+    font-weight: $font-weight-bold;
+    line-height: 1;
+    background: linear-gradient(135deg, $color-primary 0%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: $spacing-xs;
+  }
+
+  .scoreDesc {
+    font-size: $font-size-md;
+    color: $color-text-secondary;
+  }
+}
+
+/* 指标网格 */
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: $spacing-md;
+  padding: 0 $page-padding;
+  margin-top: $spacing-lg;
+}
+
+.metricCard {
+  background: $color-bg-card;
+  border-radius: $radius-lg;
+  padding: $spacing-lg;
+  box-shadow: $shadow-card;
+
+  .metricIcon {
+    width: 64rpx;
+    height: 64rpx;
+    border-radius: $radius-md;
+    @include flex-center;
+    margin-bottom: $spacing-sm;
+    font-size: 32rpx;
+  }
+
+  .metricIcon--time { background: rgba($color-primary, 0.1); }
+  .metricIcon--deep { background: rgba(#4a6cf7, 0.1); }
+  .metricIcon--rem { background: rgba(#a78bfa, 0.1); }
+  .metricIcon--awake { background: rgba($color-warning, 0.1); }
+
+  .metricValue {
+    font-size: $font-size-xxl;
+    font-weight: $font-weight-bold;
+    color: $color-text-primary;
+    line-height: 1.2;
+  }
+
+  .metricUnit {
+    font-size: $font-size-sm;
+    color: $color-text-tertiary;
+    margin-left: 4rpx;
+  }
+
+  .metricLabel {
+    font-size: $font-size-sm;
+    color: $color-text-tertiary;
+    margin-top: 4rpx;
+  }
+}
+
+/* 深睡比例条 */
+.deepRatioSection {
+  margin: $spacing-lg $page-padding 0;
+  background: $color-bg-card;
+  border-radius: $radius-lg;
+  padding: $spacing-lg;
+  box-shadow: $shadow-card;
+
+  .ratioHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: $spacing-sm;
+  }
+
+  .ratioTitle {
+    font-size: $font-size-sm;
+    color: $color-text-secondary;
+    font-weight: $font-weight-medium;
+  }
+
+  .ratioPercent {
+    font-size: $font-size-lg;
+    font-weight: $font-weight-bold;
+    color: $color-sleep-deep;
+  }
+
+  .ratioTrack {
+    height: 16rpx;
+    background: $color-bg-page;
+    border-radius: 8rpx;
+    overflow: hidden;
+  }
+
+  .ratioFill {
+    height: 100%;
+    border-radius: 8rpx;
+    background: linear-gradient(90deg, $color-sleep-deep 0%, $color-sleep-rem 100%);
+    transition: width 0.5s ease;
+  }
+
+  .ratioLabels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: $spacing-xs;
+    font-size: $font-size-xs;
+    color: $color-text-tertiary;
+  }
+}
+
+/* 加载状态 */
+.loadingState {
+  @include flex-center;
+  min-height: 400rpx;
+}
+
+.loadingText {
+  color: $color-text-tertiary;
+  font-size: $font-size-md;
+}

@@ -1,5 +1,5 @@
 /**
- * 首页（启动后自动跳转到登录或设备管理）
+ * 启动页（自动跳转到登录或首页）
  * @author Developer
  * @created 2026-06-22
  */
@@ -11,7 +11,7 @@ import { isLoggedIn } from '@/utils/auth';
 const IndexPage = () => {
   useEffect(() => {
     if (isLoggedIn()) {
-      Taro.switchTab({ url: '/pages/devices/index' });
+      Taro.switchTab({ url: '/pages/home/index' });
     } else {
       Taro.redirectTo({ url: '/pages/login/index' });
     }
