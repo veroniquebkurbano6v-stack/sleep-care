@@ -1,0 +1,30 @@
+{
+  "name": "sleep-care-backend",
+  "version": "1.0.0",
+  "description": "睡眠评估干预系统 - 后端服务",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "init-db": "node db/init.js"
+  },
+  "keywords": [
+    "sleep-care",
+    "express",
+    "sql.js",
+    "sqlite"
+  ],
+  "author": "Developer",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "sql.js": "^1.10.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
