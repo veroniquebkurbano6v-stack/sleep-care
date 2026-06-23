@@ -524,13 +524,21 @@ app.get('/api/sleep/report/daily', authMiddleware, (req, res) => {
         }
 
         // 步骤3：不存在则获取用户的一台设备作为关联设备
-        const device = get(
+        let device = get(
             'SELECT device_id FROM devices WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
             [req.user.user_id]
         );
 
+        // 若无绑定设备，自动创建一台虚拟设备（确保首页可直接使用）
         if (!device) {
-            return fail(res, '暂无绑定设备，无法生成报告', 400);
+            const autoDeviceId = generateDeviceId();
+            const autoSerialNo = generateVirtualSerialNo();
+            run(
+                `INSERT INTO devices (device_id, user_id, serial_no, name, is_virtual, firmware_version)
+                 VALUES (?, ?, ?, '默认睡眠监测设备', 1, 'V1.0.0')`,
+                [autoDeviceId, req.user.user_id, autoSerialNo]
+            );
+            device = { device_id: autoDeviceId };
         }
 
         // 步骤4：使用确定性伪随机函数生成模拟数据
