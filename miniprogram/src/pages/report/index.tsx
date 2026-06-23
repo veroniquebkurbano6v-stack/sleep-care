@@ -1,6 +1,6 @@
 /**
  * 睡眠分期报告页
- * 展示睡眠分期柱状图 + 噪音折线图，支持日期切换联动刷新
+ * 展示睡眠分期柱状图 + 噪音折线图 + 评分趋势图，支持日期切换和日/周/月视图切换
  * @author Developer
  * @created 2026-06-23
  */
@@ -10,8 +10,10 @@ import { View, Text, Picker } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import StageBarChart from '@/components/ec-canvas/index';
 import NoiseLineChart from '@/components/noise-line-chart/index';
-import { request } from '@/services/api';
+import ScoreTrendChart from '@/components/score-trend-chart/index';
+import { request, sleepApi } from '@/services/api';
 import { isLoggedIn } from '@/utils/auth';
+import type { SleepSummaryData } from '@/types';
 import styles from './index.module.scss';
 
 /** 分期数据响应类型 */
@@ -65,6 +67,11 @@ const ReportPage = () => {
   const [noiseData, setNoiseData] = useState<NoiseResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // 新增：日/周/月视图状态
+  const [currentPeriod, setCurrentPeriod] = useState<'day' | 'week' | 'month'>('day');
+  const [summaryData, setSummaryData] = useState<SleepSummaryData | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+
   /** 获取分期数据 */
   const fetchStages = async (date: string) => {
     try {
@@ -94,18 +101,44 @@ const ReportPage = () => {
     setLoading(false);
   };
 
+  /** 获取睡眠评分汇总数据 */
+  const loadSummary = async (period: 'day' | 'week' | 'month') => {
+    setSummaryLoading(true);
+    try {
+      const data = await sleepApi.getSummary(period);
+      setSummaryData(data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '加载评分汇总失败';
+      console.error('[Report Summary]', msg);
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
+  /** 切换视图周期 */
+  const switchPeriod = (period: 'day' | 'week' | 'month') => {
+    setCurrentPeriod(period);
+    loadSummary(period);
+  };
+
   useDidShow(() => {
     if (!isLoggedIn()) {
       Taro.redirectTo({ url: '/pages/login/index' });
       return;
     }
     fetchData(selectedDate);
+    loadSummary(currentPeriod);
   });
 
   useEffect(() => {
     if (!isLoggedIn()) return;
     fetchData(selectedDate);
   }, [selectedDate]);
+
+  useEffect(() => {
+    if (!isLoggedIn()) return;
+    loadSummary(currentPeriod);
+  }, [currentPeriod]);
 
   /** 统计各阶段时长 */
   const getStageStats = () => {
@@ -163,6 +196,50 @@ const ReportPage = () => {
             <Text className={styles.arrow}>▼</Text>
           </View>
         </Picker>
+      </View>
+
+      {/* 日/周/月视图切换按钮 */}
+      <View className={styles.periodSwitcher}>
+        <View
+          className={`${styles.periodBtn} ${currentPeriod === 'day' ? styles.active : ''}`}
+          onClick={() => switchPeriod('day')}
+        >
+          <Text>日视图</Text>
+        </View>
+        <View
+          className={`${styles.periodBtn} ${currentPeriod === 'week' ? styles.active : ''}`}
+          onClick={() => switchPeriod('week')}
+        >
+          <Text>周视图</Text>
+        </View>
+        <View
+          className={`${styles.periodBtn} ${currentPeriod === 'month' ? styles.active : ''}`}
+          onClick={() => switchPeriod('month')}
+        >
+          <Text>月视图</Text>
+        </View>
+      </View>
+
+      {/* 评分趋势图 */}
+      <View className={styles.chartArea}>
+        <Text className={styles.chartTitle}>睡眠评分趋势</Text>
+        {summaryLoading ? (
+          <View className={styles.loadingBox}>
+            <Text>正在加载评分数据...</Text>
+          </View>
+        ) : summaryData ? (
+          <ScoreTrendChart
+            labels={summaryData.labels}
+            scores={summaryData.scores}
+            avgScore={summaryData.avg_score}
+            width={340}
+            height={200}
+          />
+        ) : (
+          <View className={styles.loadingBox}>
+            <Text>暂无评分数据</Text>
+          </View>
+        )}
       </View>
 
       {/* 分期柱状图 */}

@@ -71,3 +71,11 @@ export interface AddDeviceParams {
 export interface UpdateDeviceParams {
   name: string;
 }
+
+/** 睡眠评分汇总响应 */
+export interface SleepSummaryData {
+  period: 'day' | 'week' | 'month';
+  labels: string[];
+  scores: number[];
+  avg_score: number;
+}

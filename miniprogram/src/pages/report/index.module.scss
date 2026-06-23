@@ -53,6 +53,31 @@
   font-size: $font-size-xs;
 }
 
+/* 日/周/月视图切换按钮 */
+.periodSwitcher {
+  display: flex;
+  justify-content: center;
+  gap: $spacing-sm;
+  padding: $spacing-md $page-padding 0;
+}
+
+.periodBtn {
+  padding: $spacing-sm $spacing-lg;
+  background: $color-bg-card;
+  border-radius: $radius-md;
+  font-size: $font-size-md;
+  color: $color-text-secondary;
+  border: 2rpx solid $color-border;
+  transition: all 0.3s ease;
+
+  &.active {
+    background: $color-primary;
+    color: $color-text-white;
+    border-color: $color-primary;
+    font-weight: $font-weight-medium;
+  }
+}
+
 /* 图表区域 */
 .chartArea {
   margin: $spacing-lg $page-padding 0;

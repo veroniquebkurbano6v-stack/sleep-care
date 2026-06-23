@@ -61,7 +61,8 @@ app.get('/', (req, res) => {
             'DELETE /api/v1/devices/:id',
             'GET  /api/sleep/report/daily',
             'GET  /api/sleep/stages',
-            'GET  /api/sleep/noise'
+            'GET  /api/sleep/noise',
+            'GET  /api/sleep/summary'
         ]
     }, 'Sleep Care Backend is running');
 });
@@ -389,6 +390,169 @@ app.delete('/api/v1/devices/:id', authMiddleware, async (req, res) => {
     } catch (err) {
         console.error('[devices/delete] error:', err);
         return fail(res, '删除设备失败', 500, 500);
+    }
+});
+
+// ============ 睡眠评分汇总接口（懒加载补全） ============
+
+/**
+ * 查询或生成指定日期的睡眠评分（懒加载补全核心函数）
+ * 若该日期无报告，则自动生成并持久化到数据库
+ * @param {number} userId 用户ID
+ * @param {string} date 日期 YYYY-MM-DD
+ * @returns {object} 包含 sleep_score 的报告对象
+ */
+function getOrCreateDailyScore(userId, date) {
+    // 步骤1：查询该日期是否已有报告
+    const existing = get(
+        'SELECT sleep_score FROM sleep_reports WHERE user_id = ? AND report_date = ?',
+        [userId, date]
+    );
+
+    if (existing) {
+        return existing;
+    }
+
+    // 步骤2：无报告则获取用户设备
+    let device = get(
+        'SELECT device_id FROM devices WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+        [userId]
+    );
+
+    // 若无设备则自动创建虚拟设备
+    if (!device) {
+        const autoDeviceId = generateDeviceId();
+        const autoSerialNo = generateVirtualSerialNo();
+        run(
+            `INSERT INTO devices (device_id, user_id, serial_no, name, is_virtual, firmware_version)
+             VALUES (?, ?, ?, '默认睡眠监测设备', 1, 'V1.0.0')`,
+            [autoDeviceId, userId, autoSerialNo]
+        );
+        device = { device_id: autoDeviceId };
+    }
+
+    // 步骤3：生成模拟数据并插入
+    const seed = `${userId}_${device.device_id}_${date}`;
+    const mockData = generateMockSleepData(seed);
+
+    run(
+        `INSERT INTO sleep_reports (
+            user_id, device_id, report_date, sleep_score,
+            total_sleep_minutes, deep_sleep_minutes, rem_sleep_minutes,
+            light_sleep_minutes, awake_minutes, awake_count, avg_heart_rate,
+            heart_rate_json, respiration_json, sleep_stages_json, noise_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            userId, device.device_id, date, mockData.sleep_score,
+            mockData.total_sleep_minutes, mockData.deep_sleep_minutes,
+            mockData.rem_sleep_minutes, mockData.light_sleep_minutes,
+            mockData.awake_minutes, mockData.awake_count,
+            mockData.avg_heart_rate, mockData.heart_rate_json,
+            mockData.respiration_json, mockData.sleep_stages_json,
+            mockData.noise_json,
+        ]
+    );
+
+    // 步骤4：立即持久化
+    saveDatabase();
+
+    // 步骤5：返回新创建的评分
+    return { sleep_score: mockData.sleep_score };
+}
+
+/**
+ * GET /api/sleep/summary - 睡眠评分汇总接口
+ * Query: period (day/week/month)
+ * 返回：labels（日期标签）、scores（评分数组）、avg_score（平均分）
+ */
+app.get('/api/sleep/summary', authMiddleware, (req, res) => {
+    try {
+        const { period } = req.query || {};
+        const periodType = period || 'day';
+
+        // 参数校验
+        if (!['day', 'week', 'month'].includes(periodType)) {
+            return fail(res, 'period 参数错误，仅支持 day/week/month', 400);
+        }
+
+        const userId = req.user.user_id;
+        const labels = [];
+        const scores = [];
+
+        if (periodType === 'day') {
+            // 日视图：最近7天
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const dateStr = d.toISOString().slice(0, 10);
+                labels.push(dateStr.slice(5)); // MM-DD格式
+
+                // 查询或生成该日期的评分（懒加载补全）
+                const report = getOrCreateDailyScore(userId, dateStr);
+                scores.push(report.sleep_score);
+            }
+        } else if (periodType === 'week') {
+            // 周视图：最近6周
+            for (let i = 5; i >= 0; i--) {
+                const weekStart = new Date();
+                weekStart.setDate(weekStart.getDate() - weekStart.getDay() - i * 7);
+                const weekEnd = new Date(weekStart);
+                weekEnd.setDate(weekEnd.getDate() + 6);
+
+                const label = `第${6 - i}周`;
+                labels.push(label);
+
+                // 计算该周的平均评分
+                let weekScores = [];
+                for (let d = new Date(weekStart); d <= weekEnd; d.setDate(d.getDate() + 1)) {
+                    const dateStr = d.toISOString().slice(0, 10);
+                    const report = getOrCreateDailyScore(userId, dateStr);
+                    weekScores.push(report.sleep_score);
+                }
+
+                const avgWeek = Math.round(weekScores.reduce((a, b) => a + b, 0) / weekScores.length);
+                scores.push(avgWeek);
+            }
+        } else if (periodType === 'month') {
+            // 月视图：最近6个月
+            for (let i = 5; i >= 0; i--) {
+                const monthDate = new Date();
+                monthDate.setMonth(monthDate.getMonth() - i);
+                const year = monthDate.getFullYear();
+                const month = monthDate.getMonth() + 1;
+
+                const label = `${year}-${String(month).padStart(2, '0')}`;
+                labels.push(label);
+
+                // 计算该月的平均评分
+                const daysInMonth = new Date(year, month, 0).getDate();
+                let monthScores = [];
+
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const report = getOrCreateDailyScore(userId, dateStr);
+                    monthScores.push(report.sleep_score);
+                }
+
+                const avgMonth = Math.round(monthScores.reduce((a, b) => a + b, 0) / monthScores.length);
+                scores.push(avgMonth);
+            }
+        }
+
+        // 计算整体平均分
+        const avgScore = scores.length > 0
+            ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+            : 0;
+
+        return ok(res, {
+            period: periodType,
+            labels,
+            scores,
+            avg_score: avgScore,
+        });
+    } catch (err) {
+        console.error('[sleep/summary] error:', err);
+        return fail(res, '获取睡眠评分汇总失败', 500, 500);
     }
 });
 

@@ -101,4 +101,12 @@ export const deviceApi = {
   },
 };
 
+/** 睡眠评分汇总接口 */
+export const sleepApi = {
+  /** 获取睡眠评分汇总（日/周/月视图） */
+  getSummary(period: 'day' | 'week' | 'month') {
+    return request<import('@/types').SleepSummaryData>('GET', `/api/sleep/summary?period=${period}`);
+  },
+};
+
 export default request;
