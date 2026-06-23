@@ -19,13 +19,13 @@ function getToken(): string {
 }
 
 /**
- * 封装的通用请求方法
+ * 封装的通用请求方法（命名导出）
  * @param {string} method HTTP 方法
  * @param {string} url 接口路径
  * @param {object} data 请求数据
  * @returns {Promise<ApiResponse<T>>} 解包后的业务数据
  */
-async function request<T>(method: string, url: string, data?: object): Promise<T> {
+export async function request<T>(method: string, url: string, data?: object): Promise<T> {
   const header: Record<string, string> = {
     'Content-Type': 'application/json',
   };
