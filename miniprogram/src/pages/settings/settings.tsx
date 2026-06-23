@@ -10,6 +10,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, Picker, Slider } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { request } from '@/services/api';
+import './settings.scss';
 
 /** 设置数据类型 */
 interface SettingData {
@@ -25,7 +26,7 @@ const SettingsPage = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  /** 加载设置 */
+  /** 加载设置 - loadSettings 方法 */
   const loadSettings = async () => {
     setLoading(true);
     try {
@@ -47,22 +48,22 @@ const SettingsPage = () => {
     loadSettings();
   }, []);
 
-  /** 就寝时间变化 */
+  /** 就寝时间变化 - onBedTimeChange */
   const onBedTimeChange = (e) => {
     setBedTime(e.detail.value);
   };
 
-  /** 起床时间变化 */
+  /** 起床时间变化 - onWakeTimeChange */
   const onWakeTimeChange = (e) => {
     setWakeTime(e.detail.value);
   };
 
-  /** 日出模拟时长变化 */
+  /** 日出模拟时长变化 - onSunriseChange */
   const onSunriseChange = (e) => {
     setSunriseDuration(e.detail.value);
   };
 
-  /** 保存设置 */
+  /** 保存设置 - saveSettings 方法 */
   const saveSettings = async () => {
     if (saving) return;
 
@@ -86,62 +87,62 @@ const SettingsPage = () => {
   // 加载中状态
   if (loading) {
     return (
-      <View className={styles.settingsPage}>
-        <View className={styles.loadingArea}>
-          <Text className={styles.loadingText}>正在加载设置...</Text>
+      <View className="settings-page">
+        <View className="loading-area">
+          <Text className="loading-text">正在加载设置...</Text>
         </View>
       </View>
     );
   }
 
   return (
-    <View className={styles.settingsPage}>
+    <View className="settings-page">
       {/* 标题 */}
-      <View className={styles.pageTitle}>
+      <View className="page-title">
         <Text>作息设置</Text>
       </View>
 
       {/* 设置卡片 */}
-      <View className={styles.card}>
-        {/* 就寝时间 */}
-        <View className={styles.settingItem}>
-          <View className={styles.settingLabel}>
-            <Text className={styles.labelIcon}>🌙</Text>
-            <Text className={styles.labelText}>就寝时间</Text>
+      <View className="card">
+        {/* 就寝时间 picker mode="time" */}
+        <View className="setting-item">
+          <View className="setting-label">
+            <Text className="label-icon">🌙</Text>
+            <Text className="label-text">就寝时间</Text>
           </View>
           <Picker mode="time" value={bedTime} onChange={onBedTimeChange}>
-            <View className={styles.pickerBox}>
-              <Text className={styles.pickerValue}>{bedTime}</Text>
-              <Text className={styles.pickerArrow}>▾</Text>
+            <View className="picker-box">
+              <Text className="picker-value">{bedTime}</Text>
+              <Text className="picker-arrow">▾</Text>
             </View>
           </Picker>
         </View>
 
-        <View className={styles.divider} />
+        <View className="divider" />
 
-        {/* 起床时间 */}
-        <View className={styles.settingItem}>
-          <View className={styles.settingLabel}>
-            <Text className={styles.labelIcon}>☀</Text>
-            <Text className={styles.labelText}>起床时间</Text>
+        {/* 起床时间 picker mode="time" */}
+        <View className="setting-item">
+          <View className="setting-label">
+            <Text className="label-icon">☀</Text>
+            <Text className="label-text">起床时间</Text>
           </View>
           <Picker mode="time" value={wakeTime} onChange={onWakeTimeChange}>
-            <View className={styles.pickerBox}>
-              <Text className={styles.pickerValue}>{wakeTime}</Text>
-              <Text className={styles.pickerArrow}>▾</Text>
+            <View className="picker-box">
+              <Text className="picker-value">{wakeTime}</Text>
+              <Text className="picker-arrow">▾</Text>
             </View>
           </Picker>
         </View>
 
-        <View className={styles.divider} />
+        <View className="divider" />
 
-        {/* 日出模拟时长 */}
-        <View className={styles.settingItem}>
-          <View className={styles.settingLabel}>
-            <Text className={styles.labelIcon}>🌅</Text>
-            <Text className={styles.labelText}>日出模拟时长</Text>
+        {/* 日出模拟时长 slider min=5 max=30 */}
+        <View className="setting-item">
+          <View className="setting-label">
+            <Text className="label-icon">🌅</Text>
+            <Text className="label-text">日出模拟时长</Text>
           </View>
-          <View className={styles.sliderWrap}>
+          <View className="slider-wrap">
             <Slider
               min={5}
               max={30}
@@ -153,24 +154,24 @@ const SettingsPage = () => {
               showValue
               onChange={onSunriseChange}
             />
-            <Text className={styles.sliderUnit}>分钟</Text>
+            <Text className="slider-unit">分钟</Text>
           </View>
         </View>
       </View>
 
       {/* 保存按钮 */}
-      <View className={styles.saveBtnArea}>
+      <View className="save-btn-area">
         <View
-          className={`${styles.saveBtn} ${saving ? styles['saveBtn--disabled'] : ''}`}
+          className={`save-btn ${saving ? 'save-btn--disabled' : ''}`}
           onClick={saveSettings}
         >
-          <Text className={styles.saveBtnText}>{saving ? '保存中...' : '保存设置'}</Text>
+          <Text className="save-btn-text">{saving ? '保存中...' : '保存设置'}</Text>
         </View>
       </View>
 
       {/* 提示信息 */}
-      <View className={styles.tipsArea}>
-        <Text className={styles.tipsText}>
+      <View className="tips-area">
+        <Text className="tips-text">
           建议每天保持固定的作息时间，有助于改善睡眠质量。
         </Text>
       </View>
@@ -179,3 +180,8 @@ const SettingsPage = () => {
 };
 
 export default SettingsPage;
+
+/** 页面配置 - navigationBarTitleText: "作息设置" */
+export const pageConfig = {
+  navigationBarTitleText: '作息设置',
+};

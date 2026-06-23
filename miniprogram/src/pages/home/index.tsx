@@ -208,7 +208,7 @@ const HomePage = () => {
       <View className={styles.settingsBtnArea}>
         <View
           className={styles.settingsBtn}
-          onClick={() => Taro.navigateTo({ url: '/pages/settings/index' })}
+          onClick={() => Taro.navigateTo({ url: '/pages/settings/settings' })}
         >
           <Text className={styles.settingsBtnIcon}>⚙</Text>
           <Text className={styles.settingsBtnText}>作息设置</Text>
