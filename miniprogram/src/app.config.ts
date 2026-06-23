@@ -10,6 +10,7 @@ export default defineAppConfig({
     'pages/login/index',
     'pages/devices/index',
     'pages/mine/index',
+    'pages/report/index',
     'pages/index/index',
   ],
   tabBar: {

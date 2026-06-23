@@ -164,3 +164,30 @@
   color: $color-text-tertiary;
   font-size: $font-size-md;
 }
+
+/* 查看详细分期按钮 */
+.detailBtnArea {
+  padding: $spacing-lg $page-padding 0;
+}
+
+.detailBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: $spacing-xs;
+  padding: $spacing-md;
+  background: linear-gradient(135deg, rgba($color-primary, 0.08), rgba(#a78bfa, 0.12));
+  border: 2rpx solid rgba($color-primary, 0.2);
+  border-radius: $radius-lg;
+}
+
+.detailBtnText {
+  font-size: $font-size-md;
+  color: $color-primary;
+  font-weight: $font-weight-medium;
+}
+
+.detailBtnArrow {
+  font-size: $font-size-lg;
+  color: $color-primary;
+}

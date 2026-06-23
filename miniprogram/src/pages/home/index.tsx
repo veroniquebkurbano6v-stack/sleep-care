@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, Text } from '@tarojs/components';
-import Taro from '@tarojs/taro';
+import Taro, { usePullDownRefresh } from '@tarojs/taro';
 import { request } from '@/services/api';
 import { isLoggedIn } from '@/utils/auth';
 import type { ApiResponse } from '@/types';
@@ -60,10 +60,10 @@ const HomePage = () => {
     }
   };
 
-  /** 下拉刷新 */
-  const onPullDownRefresh = () => {
+  /** 下拉刷新 - 使用 Taro 原生钩子，支持刷新动画 */
+  usePullDownRefresh(() => {
     fetchReport();
-  };
+  });
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -109,7 +109,7 @@ const HomePage = () => {
   }
 
   return (
-    <View className={styles.homePage} onPullDownRefresh={onPullDownRefresh}>
+    <View className={styles.homePage}>
       {/* 头部 */}
       <View className={styles.headerArea}>
         <Text className={styles.greeting}>今日睡眠</Text>
@@ -190,6 +190,17 @@ const HomePage = () => {
         <View className={styles.ratioLabels}>
           <Text>建议值：13%-23%</Text>
           <Text>{getDeepRatio()}</Text>
+        </View>
+      </View>
+
+      {/* 查看详细分期按钮 */}
+      <View className={styles.detailBtnArea}>
+        <View
+          className={styles.detailBtn}
+          onClick={() => Taro.navigateTo({ url: '/pages/report/index' })}
+        >
+          <Text className={styles.detailBtnText}>查看详细分期</Text>
+          <Text className={styles.detailBtnArrow}>→</Text>
         </View>
       </View>
     </View>

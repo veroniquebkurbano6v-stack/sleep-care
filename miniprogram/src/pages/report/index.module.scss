@@ -1,0 +1,154 @@
+@use '@/styles/variables.scss' as *;
+
+.reportPage {
+  min-height: 100vh;
+  background: $color-bg-page;
+  padding-bottom: $spacing-xl;
+}
+
+/* 头部 */
+.header {
+  background: linear-gradient(135deg, #4a6cf7, #6b8cff);
+  padding: $spacing-xl $page-padding;
+}
+
+.title {
+  color: $color-text-white;
+  font-size: $font-size-lg;
+  font-weight: $font-weight-bold;
+}
+
+/* 日期选择器 */
+.datePicker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-md $page-padding;
+  background: $color-bg-card;
+  margin: -$spacing-lg $page-padding 0;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-card;
+}
+
+.dateLabel {
+  font-size: $font-size-md;
+  color: $color-text-secondary;
+  margin-right: $spacing-sm;
+}
+
+.dateValue {
+  display: flex;
+  align-items: center;
+  padding: $spacing-xs $spacing-md;
+  background: $color-primary-light;
+  border-radius: $radius-md;
+  color: $color-primary;
+  font-size: $font-size-md;
+  font-weight: $font-weight-medium;
+}
+
+.arrow {
+  margin-left: $spacing-xs;
+  font-size: $font-size-xs;
+}
+
+/* 图表区域 */
+.chartArea {
+  margin: $spacing-lg $page-padding 0;
+  background: $color-bg-card;
+  border-radius: $radius-lg;
+  padding: $spacing-md;
+  box-shadow: $shadow-card;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 280rpx;
+}
+
+.loadingBox {
+  @include flex-center;
+  height: 280rpx;
+  color: $color-text-tertiary;
+  font-size: $font-size-md;
+}
+
+/* 图例 */
+.legend {
+  display: flex;
+  justify-content: center;
+  gap: $spacing-lg;
+  padding: $spacing-md $page-padding 0;
+  flex-wrap: wrap;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+}
+
+.legendColor {
+  width: 24rpx;
+  height: 24rpx;
+  border-radius: 4rpx;
+}
+
+.legendText {
+  font-size: $font-size-sm;
+  color: $color-text-secondary;
+}
+
+/* 统计区域 */
+.statsArea {
+  margin: $spacing-lg $page-padding 0;
+  background: $color-bg-card;
+  border-radius: $radius-lg;
+  padding: $spacing-lg;
+  box-shadow: $shadow-card;
+}
+
+.statsTitle {
+  font-size: $font-size-md;
+  font-weight: $font-weight-medium;
+  color: $color-text-primary;
+  margin-bottom: $spacing-md;
+  text-align: center;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: $spacing-sm;
+}
+
+.statItem {
+  text-align: center;
+  padding: $spacing-sm;
+  background: $color-bg-page;
+  border-radius: $radius-md;
+}
+
+.statValue {
+  font-size: $font-size-lg;
+  font-weight: $font-weight-bold;
+  display: block;
+  line-height: 1.3;
+}
+
+.statLabel {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+  margin-top: 2rpx;
+}
+
+/* 编码说明 */
+.encodingNote {
+  margin: $spacing-md $page-padding 0;
+  text-align: center;
+}
+
+.noteText {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+  line-height: 1.5;
+}
