@@ -59,7 +59,8 @@ app.get('/', (req, res) => {
             'POST /api/v1/devices/add',
             'PUT  /api/v1/devices/:id',
             'DELETE /api/v1/devices/:id',
-            'GET  /api/sleep/report/daily'
+            'GET  /api/sleep/report/daily',
+            'GET  /api/sleep/stages'
         ]
     }, 'Sleep Care Backend is running');
 });
@@ -590,6 +591,140 @@ app.get('/api/sleep/report/daily', authMiddleware, (req, res) => {
     } catch (err) {
         console.error('[sleep/report/daily] error:', err);
         return fail(res, '获取睡眠报告失败', 500, 500);
+    }
+});
+
+// ============ 睡眠分期接口 ============
+
+/**
+ * 生成48个睡眠分期数据点（符合生理规律）
+ * 编码：0=清醒, 1=浅睡, 2=深睡, 3=REM
+ * 规律：前半夜深睡多，后半夜REM多
+ * @param {function} rng 确定性伪随机函数
+ * @returns {number[]} 长度为48的数组
+ */
+function generateSleepStages(rng) {
+    const stages = [];
+    // 将8小时睡眠分为48个时段（每段10分钟）
+    for (let i = 0; i < 48; i++) {
+        const progress = i / 47; // 0（入睡）→ 1（醒来）
+        const r = rng();
+
+        if (progress < 0.05) {
+            // 入睡期：清醒→浅睡
+            stages.push(r < 0.6 ? 0 : 1);
+        } else if (progress < 0.25) {
+            // 前半夜：深睡为主（N3慢波睡眠高峰）
+            if (r < 0.55) stages.push(2);       // 深睡55%
+            else if (r < 0.85) stages.push(1);   // 浅睡30%
+            else stages.push(3);                  // REM 15%
+        } else if (progress < 0.50) {
+            // 中半夜：深睡减少，浅睡和REM增加
+            if (r < 0.35) stages.push(2);       // 深睡35%
+            else if (r < 0.70) stages.push(1);   // 浅睡35%
+            else if (r < 0.95) stages.push(3);   // REM 25%
+            else stages.push(0);                  // 偶尔觉醒5%
+        } else if (progress < 0.75) {
+            // 后半夜：REM增多，深睡减少
+            if (r < 0.15) stages.push(2);       // 深睡15%
+            else if (r < 0.50) stages.push(1);   // 浅睡35%
+            else if (r < 0.92) stages.push(3);   // REM 42%
+            else stages.push(0);                  // 偶尔觉醒8%
+        } else {
+            // 接近醒来：觉醒增加，REM仍较多
+            if (r < 0.05) stages.push(2);       // 偶尔深睡5%
+            else if (r < 0.40) stages.push(1);   // 浅睡35%
+            else if (r < 0.80) stages.push(3);   // REM 40%
+            else stages.push(0);                  // 觉醒20%
+        }
+    }
+    return stages;
+}
+
+// GET /api/sleep/stages - 获取/生成睡眠分期数据（48个数据点，先查后插模式）
+app.get('/api/sleep/stages', authMiddleware, (req, res) => {
+    try {
+        const { date } = req.query || {};
+        const reportDate = date || new Date().toISOString().slice(0, 10);
+
+        // 参数校验
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
+            return fail(res, '日期格式错误，请使用 YYYY-MM-DD', 400);
+        }
+
+        // 步骤1：查询该用户该日期的报告
+        const existingReport = get(
+            `SELECT report_id, device_id, sleep_stages_json FROM sleep_reports WHERE user_id = ? AND report_date = ?`,
+            [req.user.user_id, reportDate]
+        );
+
+        let stages;
+
+        if (existingReport && existingReport.sleep_stages_json) {
+            // 已有分期数据，直接解析返回
+            stages = JSON.parse(existingReport.sleep_stages_json);
+        } else {
+            // 无报告或无分期数据 → 生成48个分期数据点
+            const seed = `${req.user.user_id}_${reportDate}_stages`;
+            const rng = seededRandom(seed);
+            stages = generateSleepStages(rng);
+
+            if (existingReport) {
+                // 有报告但无分期数据 → UPDATE
+                run(
+                    'UPDATE sleep_reports SET sleep_stages_json = ? WHERE report_id = ?',
+                    [JSON.stringify(stages), existingReport.report_id]
+                );
+            } else {
+                // 无报告 → 获取设备并插入完整报告
+                let device = get(
+                    'SELECT device_id FROM devices WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+                    [req.user.user_id]
+                );
+                if (!device) {
+                    const autoDeviceId = generateDeviceId();
+                    const autoSerialNo = generateVirtualSerialNo();
+                    run(
+                        `INSERT INTO devices (device_id, user_id, serial_no, name, is_virtual, firmware_version)
+                         VALUES (?, ?, ?, '默认睡眠监测设备', 1, 'V1.0.0')`,
+                        [autoDeviceId, req.user.user_id, autoSerialNo]
+                    );
+                    device = { device_id: autoDeviceId };
+                }
+
+                const mockData = generateMockSleepData(`${req.user.user_id}_${device.device_id}_${reportDate}`);
+                mockData.sleep_stages_json = JSON.stringify(stages);
+                run(
+                    `INSERT INTO sleep_reports (
+                        user_id, device_id, report_date, sleep_score,
+                        total_sleep_minutes, deep_sleep_minutes, rem_sleep_minutes,
+                        light_sleep_minutes, awake_minutes, awake_count, avg_heart_rate,
+                        heart_rate_json, respiration_json, sleep_stages_json, noise_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        req.user.user_id, device.device_id, reportDate,
+                        mockData.sleep_score, mockData.total_sleep_minutes,
+                        mockData.deep_sleep_minutes, mockData.rem_sleep_minutes,
+                        mockData.light_sleep_minutes, mockData.awake_minutes,
+                        mockData.awake_count, mockData.avg_heart_rate,
+                        mockData.heart_rate_json, mockData.respiration_json,
+                        mockData.sleep_stages_json, mockData.noise_json,
+                    ]
+                );
+            }
+
+            saveDatabase();
+        }
+
+        return ok(res, {
+            date: reportDate,
+            total_points: stages.length,
+            stages: stages,
+            encoding: '0=清醒, 1=浅睡, 2=深睡, 3=REM',
+        });
+    } catch (err) {
+        console.error('[sleep/stages] error:', err);
+        return fail(res, '获取睡眠分期数据失败', 500, 500);
     }
 });
 
