@@ -203,6 +203,18 @@ const HomePage = () => {
           <Text className={styles.detailBtnArrow}>→</Text>
         </View>
       </View>
+
+      {/* 作息设置入口按钮 */}
+      <View className={styles.settingsBtnArea}>
+        <View
+          className={styles.settingsBtn}
+          onClick={() => Taro.navigateTo({ url: '/pages/settings/index' })}
+        >
+          <Text className={styles.settingsBtnIcon}>⚙</Text>
+          <Text className={styles.settingsBtnText}>作息设置</Text>
+          <Text className={styles.settingsBtnArrow}>→</Text>
+        </View>
+      </View>
     </View>
   );
 };

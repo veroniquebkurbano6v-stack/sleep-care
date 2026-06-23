@@ -1017,6 +1017,76 @@ app.use((err, req, res, next) => {
     fail(res, '服务器内部错误', 500, 500);
 });
 
+// ============ 作息设置接口 ============
+/**
+ * GET /api/setting/plan
+ * 获取用户作息设置（就寝时间、起床时间、日出模拟时长）
+ */
+app.get('/api/setting/plan', authMiddleware, (req, res) => {
+    try {
+        const userId = req.user.user_id;
+
+        // 查询用户设置
+        let setting = get(
+            'SELECT bedtime, wakeup_time, sunrise_duration FROM user_settings WHERE user_id = ?',
+            [userId]
+        );
+
+        if (!setting) {
+            run('INSERT INTO user_settings (user_id) VALUES (?)', [userId]);
+            setting = { bedtime: '23:00', wakeup_time: '07:00', sunrise_duration: 10 };
+        }
+
+        return ok(res, {
+            bed_time: setting.bedtime || '23:00',
+            wake_time: setting.wakeup_time || '07:00',
+            sunrise_duration_minutes: setting.sunrise_duration || 10,
+        });
+    } catch (err) {
+        console.error('[getSettingPlan] error:', err);
+        return fail(res, '服务器内部错误', 500);
+    }
+});
+
+/**
+ * PUT /api/setting/plan
+ * 更新用户作息设置
+ */
+app.put('/api/setting/plan', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.user_id;
+        const { bed_time, wake_time, sunrise_duration_minutes } = req.body || {};
+
+        if (!bed_time || !wake_time || sunrise_duration_minutes === undefined) {
+            return fail(res, '参数不完整', 400);
+        }
+
+        const duration = Number(sunrise_duration_minutes);
+        if (duration < 5 || duration > 30) {
+            return fail(res, '日出模拟时长需在5-30分钟之间', 400);
+        }
+
+        // 确保记录存在
+        let setting = get('SELECT id FROM user_settings WHERE user_id = ?', [userId]);
+        if (!setting) {
+            run('INSERT INTO user_settings (user_id) VALUES (?)', [userId]);
+        }
+
+        run(
+            `UPDATE user_settings SET bedtime = ?, wakeup_time = ?, sunrise_duration = ?,
+             updated_at = datetime('now') WHERE user_id = ?`,
+            [bed_time, wake_time, duration, userId]
+        );
+
+        saveDatabase();
+
+        return ok(res, { bed_time, wake_time, sunrise_duration_minutes: duration }, '保存成功');
+    } catch (err) {
+        console.error('[putSettingPlan] error:', err);
+        return fail(res, '服务器内部错误', 500);
+    }
+});
+
 // ============ 404 处理 ============
 app.use((req, res) => {
     fail(res, `路由不存在: ${req.method} ${req.path}`, 404, 404);

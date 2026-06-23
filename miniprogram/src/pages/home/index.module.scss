@@ -191,3 +191,38 @@
   font-size: $font-size-lg;
   color: $color-primary;
 }
+
+/* 作息设置入口按钮 */
+.settingsBtnArea {
+  padding: $spacing-lg $page-padding 0;
+}
+
+.settingsBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: $spacing-md;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.08), rgba(245, 158, 11, 0.12));
+  border: 2rpx solid rgba(245, 158, 11, 0.3);
+  border-radius: $radius-lg;
+
+  &:active {
+    opacity: 0.8;
+  }
+}
+
+.settingsBtnIcon {
+  font-size: $font-size-lg;
+}
+
+.settingsBtnText {
+  font-size: $font-size-md;
+  color: #d97706;
+  font-weight: $font-weight-medium;
+}
+
+.settingsBtnArrow {
+  font-size: $font-size-lg;
+  color: #d97706;
+}

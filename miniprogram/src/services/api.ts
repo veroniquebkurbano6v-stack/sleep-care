@@ -109,4 +109,17 @@ export const sleepApi = {
   },
 };
 
+/** 作息设置接口 */
+export const settingApi = {
+  /** 获取作息设置 */
+  getPlan() {
+    return request<{ bed_time: string; wake_time: string; sunrise_duration_minutes: number }>('GET', '/api/setting/plan');
+  },
+
+  /** 更新作息设置 */
+  savePlan(data: { bed_time: string; wake_time: string; sunrise_duration_minutes: number }) {
+    return request<{ bed_time: string; wake_time: string; sunrise_duration_minutes: number }>('PUT', '/api/setting/plan', data);
+  },
+};
+
 export default request;
