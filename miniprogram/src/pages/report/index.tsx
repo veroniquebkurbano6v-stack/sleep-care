@@ -1,6 +1,6 @@
 /**
  * 睡眠分期报告页
- * 展示睡眠分期柱状图（ECharts），支持日期切换
+ * 展示睡眠分期柱状图 + 噪音折线图，支持日期切换联动刷新
  * @author Developer
  * @created 2026-06-23
  */
@@ -8,10 +8,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Picker } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
-import EcCanvas from '@/components/ec-canvas/index';
+import StageBarChart from '@/components/ec-canvas/index';
+import NoiseLineChart from '@/components/noise-line-chart/index';
 import { request } from '@/services/api';
 import { isLoggedIn } from '@/utils/auth';
-import * as echarts from '@/components/ec-canvas/echarts.simple';
 import styles from './index.module.scss';
 
 /** 分期数据响应类型 */
@@ -19,6 +19,15 @@ interface StagesResponse {
   date: string;
   total_points: number;
   stages: number[];
+  encoding: string;
+}
+
+/** 噪音数据响应类型 */
+interface NoiseResponse {
+  date: string;
+  total_points: number;
+  noise: number[];
+  unit: string;
   encoding: string;
 }
 
@@ -53,21 +62,36 @@ const ReportPage = () => {
     new Date().toISOString().slice(0, 10)
   );
   const [stagesData, setStagesData] = useState<StagesResponse | null>(null);
+  const [noiseData, setNoiseData] = useState<NoiseResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   /** 获取分期数据 */
   const fetchStages = async (date: string) => {
-    setLoading(true);
     try {
       const data = await request<StagesResponse>('GET', `/api/sleep/stages?date=${date}`);
       setStagesData(data);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '加载失败';
-      console.error('[Report]', msg);
-      Taro.showToast({ title: msg, icon: 'none' });
-    } finally {
-      setLoading(false);
+      console.error('[Report Stages]', msg);
     }
+  };
+
+  /** 获取噪音数据 */
+  const fetchNoise = async (date: string) => {
+    try {
+      const data = await request<NoiseResponse>('GET', `/api/sleep/noise?date=${date}`);
+      setNoiseData(data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '加载失败';
+      console.error('[Report Noise]', msg);
+    }
+  };
+
+  /** 同时获取分期和噪音数据（联动刷新） */
+  const fetchData = async (date: string) => {
+    setLoading(true);
+    await Promise.all([fetchStages(date), fetchNoise(date)]);
+    setLoading(false);
   };
 
   useDidShow(() => {
@@ -75,78 +99,13 @@ const ReportPage = () => {
       Taro.redirectTo({ url: '/pages/login/index' });
       return;
     }
-    fetchStages(selectedDate);
+    fetchData(selectedDate);
   });
 
   useEffect(() => {
     if (!isLoggedIn()) return;
-    fetchStages(selectedDate);
+    fetchData(selectedDate);
   }, [selectedDate]);
-
-  /** 构建ECharts柱状图配置 */
-  const getChartOption = (): echarts.EChartsOption => {
-    if (!stagesData || !stagesData.stages || stagesData.stages.length === 0) {
-      return {};
-    }
-
-    const stages = stagesData.stages;
-
-    // 将48个数据点转为柱状图数据（每个柱子一个颜色）
-    const barData = stages.map((stage) => ({
-      value: 1,
-      itemStyle: { color: STAGE_COLORS[stage] || '#ccc' },
-    }));
-
-    // X轴标签：每4个点显示一个时间（每40分钟）
-    const xLabels: string[] = [];
-    for (let i = 0; i < stages.length; i += 4) {
-      const hour = Math.floor(i / 6); // 每6个点=1小时
-      const min = ((i % 6) * 10);
-      xLabels.push(`${String(22 + Math.floor((hour + min / 60)) % 24).padStart(2, '0')}:${String(((hour * 60 + min) % 60)).padStart(2, '0')}`);
-    }
-
-    return {
-      title: {
-        text: `睡眠分期图 - ${selectedDate}`,
-        left: 'center',
-        textStyle: { fontSize: 14, color: '#333' },
-      },
-      tooltip: {
-        trigger: 'axis',
-        formatter: (params: any) => {
-          const idx = params[0]?.dataIndex ?? 0;
-          const stageVal = stages[idx];
-          return `${STAGE_LABELS[stageVal] ?? '未知'} (时段 ${idx + 1}/48)`;
-        },
-      },
-      grid: {
-        top: 50,
-        bottom: 30,
-        left: 15,
-        right: 15,
-        containLabel: true,
-      },
-      xAxis: {
-        type: 'category',
-        data: Array.from({ length: stages.length }, (_, i) => `${i + 1}`),
-        axisLabel: { fontSize: 9, interval: 3 },
-        axisTick: { show: false },
-      },
-      yAxis: {
-        type: 'value',
-        show: false,
-        max: 1.5,
-      },
-      series: [
-        {
-          type: 'bar',
-          data: barData,
-          barWidth: '80%',
-          animation: true,
-        },
-      ],
-    };
-  };
 
   /** 统计各阶段时长 */
   const getStageStats = () => {
@@ -162,13 +121,31 @@ const ReportPage = () => {
     };
   };
 
+  /** 计算噪音统计 */
+  const getNoiseStats = () => {
+    if (!noiseData?.noise || noiseData.noise.length === 0) return null;
+    const data = noiseData.noise;
+    const avg = Math.round(data.reduce((a, b) => a + b, 0) / data.length * 10) / 10;
+    const max = Math.max(...data);
+    const min = Math.min(...data);
+    // 夜间平均（22:00-06:00，即索引132-143和0-35）
+    const nightValues = [];
+    for (let i = 132; i < 144; i++) nightValues.push(data[i]);
+    for (let i = 0; i < 36; i++) nightValues.push(data[i]);
+    const nightAvg = nightValues.length > 0
+      ? Math.round(nightValues.reduce((a, b) => a + b, 0) / nightValues.length * 10) / 10
+      : 0;
+    return { avg, max, min, nightAvg };
+  };
+
   const stats = getStageStats();
+  const noiseStats = getNoiseStats();
 
   return (
     <View className={styles.reportPage}>
       {/* 头部 */}
       <View className={styles.header}>
-        <Text className={styles.title}>睡眠分期报告</Text>
+        <Text className={styles.title}>睡眠分析报告</Text>
       </View>
 
       {/* 日期选择器 */}
@@ -188,18 +165,19 @@ const ReportPage = () => {
         </Picker>
       </View>
 
-      {/* 图表区域 */}
+      {/* 分期柱状图 */}
       <View className={styles.chartArea}>
+        <Text className={styles.chartTitle}>Sleep Stages</Text>
         {loading ? (
           <View className={styles.loadingBox}>
-            <Text>正在加载分期数据...</Text>
+            <Text>正在加载数据...</Text>
           </View>
         ) : (
-          <EcCanvas option={getChartOption()} width={340} height={260} />
+          <StageBarChart stages={stagesData?.stages || []} width={340} height={240} />
         )}
       </View>
 
-      {/* 图例说明 */}
+      {/* 分期图例 */}
       <View className={styles.legend}>
         {Object.entries(STAGE_LABELS).map(([key, label]) => (
           <View key={key} className={styles.legendItem}>
@@ -212,43 +190,91 @@ const ReportPage = () => {
         ))}
       </View>
 
+      {/* 噪音折线图 */}
+      <View className={styles.chartArea}>
+        <Text className={styles.chartTitle}>Noise Level</Text>
+        {loading ? (
+          <View className={styles.loadingBox}>
+            <Text>正在加载噪音数据...</Text>
+          </View>
+        ) : (
+          <NoiseLineChart noise={noiseData?.noise || []} width={340} height={200} />
+        )}
+      </View>
+
       {/* 统计信息 */}
-      {stats && (
-        <View className={styles.statsArea}>
-          <Text className={styles.statsTitle}>各阶段时长统计</Text>
-          <View className={styles.statsGrid}>
-            <View className={styles.statItem}>
-              <Text className={styles.statValue} style={{ color: STAGE_COLORS[0] }}>
-                {stats.awake}min
-              </Text>
-              <Text className={styles.statLabel}>清醒</Text>
-            </View>
-            <View className={styles.statItem}>
-              <Text className={styles.statValue} style={{ color: STAGE_COLORS[1] }}>
-                {stats.light}min
-              </Text>
-              <Text className={styles.statLabel}>浅睡</Text>
-            </View>
-            <View className={styles.statItem}>
-              <Text className={styles.statValue} style={{ color: STAGE_COLORS[2] }}>
-                {stats.deep}min
-              </Text>
-              <Text className={styles.statLabel}>深睡</Text>
-            </View>
-            <View className={styles.statItem}>
-              <Text className={styles.statValue} style={{ color: STAGE_COLORS[3] }}>
-                {stats.rem}min
-              </Text>
-              <Text className={styles.statLabel}>REM</Text>
+      <View className={styles.statsRow}>
+        {/* 各阶段时长统计 */}
+        {stats && (
+          <View className={styles.statsCard}>
+            <Text className={styles.statsTitle}>各阶段时长</Text>
+            <View className={styles.statsGrid}>
+              <View className={styles.statItem}>
+                <Text className={styles.statValue} style={{ color: STAGE_COLORS[0] }}>
+                  {stats.awake}min
+                </Text>
+                <Text className={styles.statLabel}>清醒</Text>
+              </View>
+              <View className={styles.statItem}>
+                <Text className={styles.statValue} style={{ color: STAGE_COLORS[1] }}>
+                  {stats.light}min
+                </Text>
+                <Text className={styles.statLabel}>浅睡</Text>
+              </View>
+              <View className={styles.statItem}>
+                <Text className={styles.statValue} style={{ color: STAGE_COLORS[2] }}>
+                  {stats.deep}min
+                </Text>
+                <Text className={styles.statLabel}>深睡</Text>
+              </View>
+              <View className={styles.statItem}>
+                <Text className={styles.statValue} style={{ color: STAGE_COLORS[3] }}>
+                  {stats.rem}min
+                </Text>
+                <Text className={styles.statLabel}>REM</Text>
+              </View>
             </View>
           </View>
-        </View>
-      )}
+        )}
+
+        {/* 噪音统计 */}
+        {noiseStats && (
+          <View className={styles.statsCard}>
+            <Text className={styles.statsTitle}>噪音统计</Text>
+            <View className={styles.statsGrid}>
+              <View className={styles.statItem}>
+                <Text className={styles.statValue} style={{ color: '#4a6cf7' }}>
+                  {noiseStats.avg}dB
+                </Text>
+                <Text className={styles.statLabel}>均值</Text>
+              </View>
+              <View className={styles.statItem}>
+                <Text className={styles.statValue} style={{ color: '#ff6b6b' }}>
+                  {noiseStats.max}dB
+                </Text>
+                <Text className={styles.statLabel}>峰值</Text>
+              </View>
+              <View className={styles.statItem}>
+                <Text className={styles.statValue} style={{ color: '#51cf66' }}>
+                  {noiseStats.min}dB
+                </Text>
+                <Text className={styles.statLabel}>谷值</Text>
+              </View>
+              <View className={styles.statItem}>
+                <Text className={styles.statValue} style={{ color: '#845ef7' }}>
+                  {noiseStats.nightAvg}dB
+                </Text>
+                <Text className={styles.statLabel}>夜间均</Text>
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
 
       {/* 编码说明 */}
       <View className={styles.encodingNote}>
         <Text className={styles.noteText}>
-          数据编码：0=清醒 / 1=浅睡 / 2=深睡 / 3=REM（共{stagesData?.total_points ?? '--'}个采样点，每点10分钟）
+          数据编码：0=清醒 / 1=浅睡 / 2=深睡 / 3=REM | 噪音单位：dB（共{stagesData?.total_points ?? '--'}个采样点，每点10分钟）
         </Text>
       </View>
     </View>

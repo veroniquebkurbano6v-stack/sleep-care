@@ -19,9 +19,9 @@ export default defineAppConfig({
     backgroundColor: '#ffffff',
     borderStyle: 'black',
     list: [
-      { pagePath: 'pages/home/index', text: '首页' },
-      { pagePath: 'pages/devices/index', text: '设备' },
-      { pagePath: 'pages/mine/index', text: '我的' },
+      { pagePath: 'pages/home/index', text: '首页', iconPath: 'images/home.png', selectedIconPath: 'images/home_active.png' },
+      { pagePath: 'pages/devices/index', text: '设备', iconPath: 'images/device.png', selectedIconPath: 'images/device_active.png' },
+      { pagePath: 'pages/report/index', text: '报告', iconPath: 'images/report.png', selectedIconPath: 'images/report_active.png' },
     ],
   },
   window: {

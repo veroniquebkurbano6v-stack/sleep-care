@@ -60,7 +60,8 @@ app.get('/', (req, res) => {
             'PUT  /api/v1/devices/:id',
             'DELETE /api/v1/devices/:id',
             'GET  /api/sleep/report/daily',
-            'GET  /api/sleep/stages'
+            'GET  /api/sleep/stages',
+            'GET  /api/sleep/noise'
         ]
     }, 'Sleep Care Backend is running');
 });
@@ -725,6 +726,124 @@ app.get('/api/sleep/stages', authMiddleware, (req, res) => {
     } catch (err) {
         console.error('[sleep/stages] error:', err);
         return fail(res, '获取睡眠分期数据失败', 500, 500);
+    }
+});
+
+// ============ 噪音数据接口 ============
+
+/**
+ * 生成144个噪音数据点（每10分钟一个点，共24小时）
+ * 规则：夜间 22:00-06:00 为 30-40dB，白天 06:00-22:00 为 45-65dB，含平滑过渡
+ * @param {function} rng 确定性伪随机函数
+ * @returns {number[]} 长度为144的数组（单位：dB）
+ */
+function generateNoiseData(rng) {
+    const data = [];
+    for (let i = 0; i < 144; i++) {
+        // 每个点代表10分钟，144个点=24小时（从0:00开始）
+        const hourOfDay = Math.floor(i / 6) + (i % 6 / 6); // 精确到分钟的小时数
+        const r = rng();
+
+        if (hourOfDay >= 22 || hourOfDay < 6) {
+            // 夜间 22:00-06:00：30-40dB
+            data.push(Math.round(30 + r * 10));
+        } else if (hourOfDay < 7 || hourOfDay >= 21) {
+            // 过渡期 06:00-07:00 / 21:00-22:00：35-50dB 平滑过渡
+            data.push(Math.round(35 + r * 15));
+        } else {
+            // 白天 07:00-21:00：45-65dB
+            data.push(Math.round(45 + r * 20));
+        }
+    }
+    return data;
+}
+
+// GET /api/sleep/noise - 获取/生成噪音数据（144个数据点，先查后插模式）
+app.get('/api/sleep/noise', authMiddleware, (req, res) => {
+    try {
+        const { date } = req.query || {};
+        const reportDate = date || new Date().toISOString().slice(0, 10);
+
+        // 参数校验
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
+            return fail(res, '日期格式错误，请使用 YYYY-MM-DD', 400);
+        }
+
+        // 步骤1：查询该用户该日期的报告
+        const existingReport = get(
+            `SELECT report_id, device_id, noise_json FROM sleep_reports WHERE user_id = ? AND report_date = ?`,
+            [req.user.user_id, reportDate]
+        );
+
+        let noiseData;
+
+        if (existingReport && existingReport.noise_json) {
+            // 已有噪音数据，直接解析返回
+            noiseData = JSON.parse(existingReport.noise_json);
+        } else {
+            // 无报告或无噪音数据 → 生成144个噪音数据点
+            const seed = `${req.user.user_id}_${reportDate}_noise`;
+            const rng = seededRandom(seed);
+            noiseData = generateNoiseData(rng);
+
+            if (existingReport) {
+                // 有报告但无噪音数据 → UPDATE
+                run(
+                    'UPDATE sleep_reports SET noise_json = ? WHERE report_id = ?',
+                    [JSON.stringify(noiseData), existingReport.report_id]
+                );
+            } else {
+                // 无报告 → 获取设备并插入完整报告
+                let device = get(
+                    'SELECT device_id FROM devices WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+                    [req.user.user_id]
+                );
+                if (!device) {
+                    const autoDeviceId = generateDeviceId();
+                    const autoSerialNo = generateVirtualSerialNo();
+                    run(
+                        `INSERT INTO devices (device_id, user_id, serial_no, name, is_virtual, firmware_version)
+                         VALUES (?, ?, ?, '默认睡眠监测设备', 1, 'V1.0.0')`,
+                        [autoDeviceId, req.user.user_id, autoSerialNo]
+                    );
+                    device = { device_id: autoDeviceId };
+                }
+
+                const mockData = generateMockSleepData(`${req.user.user_id}_${device.device_id}_${reportDate}`);
+                mockData.noise_json = JSON.stringify(noiseData);
+                mockData.sleep_stages_json = mockData.sleep_stages_json || JSON.stringify(generateSleepStages(seededRandom(`${req.user.user_id}_${reportDate}_stages`)));
+                run(
+                    `INSERT INTO sleep_reports (
+                        user_id, device_id, report_date, sleep_score,
+                        total_sleep_minutes, deep_sleep_minutes, rem_sleep_minutes,
+                        light_sleep_minutes, awake_minutes, awake_count, avg_heart_rate,
+                        heart_rate_json, respiration_json, sleep_stages_json, noise_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        req.user.user_id, device.device_id, reportDate,
+                        mockData.sleep_score, mockData.total_sleep_minutes,
+                        mockData.deep_sleep_minutes, mockData.rem_sleep_minutes,
+                        mockData.light_sleep_minutes, mockData.awake_minutes,
+                        mockData.awake_count, mockData.avg_heart_rate,
+                        mockData.heart_rate_json, mockData.respiration_json,
+                        mockData.sleep_stages_json, mockData.noise_json,
+                    ]
+                );
+            }
+
+            saveDatabase();
+        }
+
+        return ok(res, {
+            date: reportDate,
+            total_points: noiseData.length,
+            noise: noiseData,
+            unit: 'dB',
+            encoding: '夜间22:00-06:00为30-40dB, 白天06:00-22:00为45-65dB',
+        });
+    } catch (err) {
+        console.error('[sleep/noise] error:', err);
+        return fail(res, '获取噪音数据失败', 500, 500);
     }
 });
 

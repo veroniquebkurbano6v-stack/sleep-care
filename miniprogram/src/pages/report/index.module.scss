@@ -10,6 +10,7 @@
 .header {
   background: linear-gradient(135deg, #4a6cf7, #6b8cff);
   padding: $spacing-xl $page-padding;
+  text-align: center;
 }
 
 .title {
@@ -60,14 +61,20 @@
   padding: $spacing-md;
   box-shadow: $shadow-card;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
-  min-height: 280rpx;
+}
+
+.chartTitle {
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  color: $color-text-secondary;
+  margin-bottom: $spacing-sm;
 }
 
 .loadingBox {
   @include flex-center;
-  height: 280rpx;
+  height: 200rpx;
   color: $color-text-tertiary;
   font-size: $font-size-md;
 }
@@ -98,38 +105,44 @@
   color: $color-text-secondary;
 }
 
-/* 统计区域 */
-.statsArea {
+/* 统计区域 - 横向排列两卡片 */
+.statsRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-sm;
   margin: $spacing-lg $page-padding 0;
+}
+
+.statsCard {
   background: $color-bg-card;
   border-radius: $radius-lg;
-  padding: $spacing-lg;
+  padding: $spacing-md;
   box-shadow: $shadow-card;
 }
 
 .statsTitle {
-  font-size: $font-size-md;
+  font-size: $font-size-sm;
   font-weight: $font-weight-medium;
   color: $color-text-primary;
-  margin-bottom: $spacing-md;
+  margin-bottom: $spacing-sm;
   text-align: center;
 }
 
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: $spacing-sm;
+  grid-template-columns: repeat(2, 1fr);
+  gap: $spacing-xs;
 }
 
 .statItem {
   text-align: center;
-  padding: $spacing-sm;
+  padding: $spacing-xs;
   background: $color-bg-page;
   border-radius: $radius-md;
 }
 
 .statValue {
-  font-size: $font-size-lg;
+  font-size: $font-size-md;
   font-weight: $font-weight-bold;
   display: block;
   line-height: 1.3;
