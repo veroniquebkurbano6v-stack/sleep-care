@@ -12,6 +12,7 @@ import Taro from '@tarojs/taro';
 import { request } from '@/services/api';
 import { isLoggedIn } from '@/utils/auth';
 import type { ApiResponse } from '@/types';
+import styles from './index.module.scss';
 
 /** 睡眠报告数据类型 */
 interface SleepReport {
