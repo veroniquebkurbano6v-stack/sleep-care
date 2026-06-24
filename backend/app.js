@@ -21,8 +21,8 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 // ============ 中间件 ============
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // ============ 统一响应工具 ============
 /**
@@ -1016,12 +1016,6 @@ app.get('/api/sleep/noise', authMiddleware, (req, res) => {
     }
 });
 
-// ============ 全局错误处理 ============
-app.use((err, req, res, next) => {
-    console.error('[global error]', err);
-    fail(res, '服务器内部错误', 500, 500);
-});
-
 // ============ 作息设置接口 ============
 /**
  * GET /api/setting/plan
@@ -1562,9 +1556,70 @@ app.get('/api/doctor/note', authMiddleware, (req, res) => {
 // ============ 静态文件服务 ============
 app.use(express.static(__dirname + '/public'));
 
-// ============ 404 处理 ============
+// ============ 统一错误处理中间件 ============
+/**
+ * 全局异常捕获中间件
+ * 捕获所有路由中未处理的同步/异步错误，统一返回格式化响应
+ * 必须放在所有路由之后（Express 中间件顺序）
+ */
+app.use((err, req, res, next) => {
+    console.error('[全局错误]', err.stack || err);
+
+    // JWT 相关错误
+    if (err.name === 'JsonWebTokenError') {
+        return fail(res, 'token 无效', 401, 401);
+    }
+    if (err.name === 'TokenExpiredError') {
+        return fail(res, 'token 已过期，请重新登录', 401, 401);
+    }
+
+    // 参数校验错误
+    if (err.type === 'entity.parse.failed') {
+        return fail(res, '请求体 JSON 格式错误', 400, 400);
+    }
+    if (err.type === 'params.invalid') {
+        return fail(res, err.message || '参数格式错误', 400, 400);
+    }
+
+    // 数据库相关错误
+    if (err.message && (err.message.includes('SQLITE') || err.message.includes('database'))) {
+        return fail(res, '数据库操作失败', 500, 500);
+    }
+
+    // 默认服务器内部错误
+    const status = err.status || err.statusCode || 500;
+    return fail(res, err.message || '服务器内部错误', status >= 400 ? 1 : 1, status);
+});
+
+// ============ 统一错误处理中间件（必须放在所有路由之后）============
+
+/** 404 未匹配路由处理 */
 app.use((req, res) => {
-    fail(res, `路由不存在: ${req.method} ${req.path}`, 404, 404);
+    return fail(res, `接口不存在: ${req.method} ${req.path}`, 404, 404);
+});
+
+/**
+ * 全局异常捕获中间件
+ * 防止未捕获的异步错误导致进程崩溃
+ * 统一日志格式：[时间] [级别] [模块] 消息
+ */
+app.use((err, req, res, _next) => {
+    const timestamp = new Date().toISOString();
+    const method = req.method;
+    const path = req.path;
+    const errMsg = err.message || '服务器内部错误';
+    const errStack = err.stack || '';
+
+    // 统一格式日志输出
+    console.error(`[${timestamp}] [ERROR] [${method} ${path}] ${errMsg}`);
+    if (process.env.NODE_ENV !== 'production') {
+        console.error(errStack);
+    }
+
+    // 区分已知业务错误和未知系统错误
+    const httpStatus = err.status || err.statusCode || 500;
+    const code = err.code || 500;
+    return fail(res, errMsg, code, httpStatus);
 });
 
 // ============ 启动服务 ============

@@ -116,15 +116,26 @@ CREATE TABLE IF NOT EXISTS doctor_authorizations (
     FOREIGN KEY (patient_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
--- 索引
+-- 索引（基础索引 + 性能优化索引）
 CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id);
 CREATE INDEX IF NOT EXISTS idx_devices_is_virtual ON devices(is_virtual);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_sleep_reports_user_date ON sleep_reports(user_id, report_date);
-CREATE INDEX IF NOT EXISTS idx_sleep_diary_user_date ON sleep_diary(user_id, date);
+
+-- 性能优化：睡眠报告高频查询字段索引
+CREATE INDEX IF NOT EXISTS idx_sleep_reports_user_id ON sleep_reports(user_id);
+CREATE INDEX IF NOT EXISTS idx_sleep_reports_date ON sleep_reports(report_date);
+CREATE INDEX IF NOT EXISTS idx_sleep_reports_device_id ON sleep_reports(device_id);
+
+-- 性能优化：医生授权表复合查询索引
+CREATE INDEX IF NOT EXISTS idx_doctor_auth_doctor ON doctor_authorizations(doctor_id, status);
+CREATE INDEX IF NOT EXISTS idx_doctor_auth_patient ON doctor_authorizations(patient_id, status);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_doctor_patient ON doctor_authorizations(doctor_id, patient_id);
+
+-- 睡眠日记索引
+CREATE INDEX IF NOT EXISTS idx_sleep_diary_user_date ON sleep_diary(user_id, date);
 `;
 
 module.exports = SCHEMA_SQL;

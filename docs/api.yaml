@@ -1,0 +1,460 @@
+openapi: 3.0.3
+info:
+  title: 睡眠评估干预系统 API
+  description: |
+    Sleep Care Assessment & Intervention System RESTful API
+    - 认证方式: Bearer Token (JWT)
+    - 基础路径: http://localhost:3000
+    - 统一响应格式: { code: 0|1, message: string, data: object|null }
+  version: '1.0.0'
+  contact:
+    name: Sleep Care Team
+
+servers:
+  - url: http://localhost:3000
+    description: 本地开发环境
+
+paths:
+  # ====== 1. 注册接口 ======
+  /api/v1/auth/register:
+    post:
+      tags: [认证]
+      summary: 用户注册
+      description: 支持角色参数 role（0=患者默认, 1=医生）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, password]
+              properties:
+                phone:
+                  type: string
+                  example: "13800008888"
+                password:
+                  type: string
+                  minLength: 6
+                  example: "123456"
+                nickname:
+                  type: string
+                  example: "张三"
+                gender:
+                  type: integer
+                  enum: [0, 1, 2]
+                birth_year:
+                  type: integer
+                  example: 1995
+                role:
+                  type: integer
+                  enum: [0, 1]
+                  default: 0
+                  description: "0=患者(patient), 1=医生(doctor)"
+      responses:
+        '200':
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '409':
+          description: 手机号已注册
+
+  # ====== 2. 登录接口 ======
+  /api/v1/auth/login:
+    post:
+      tags: [认证]
+      summary: 用户登录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, password]
+              properties:
+                phone:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: 登录成功，返回 JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: 密码错误
+
+  # ====== 3. 获取当前用户信息 ======
+  /api/v1/users/me:
+    get:
+      tags: [用户]
+      summary: 获取当前登录用户信息
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 用户信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # ====== 4. 设备列表 ======
+  /api/v1/devices/list:
+    get:
+      tags: [设备]
+      summary: 查询设备列表
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 设备列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListResponse'
+
+  # ====== 5. 添加设备 ======
+  /api/v1/devices/add:
+    post:
+      tags: [设备]
+      summary: 添加设备
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                is_virtual:
+                  type: integer
+                  default: 0
+      responses:
+        '200':
+          description: 设备添加成功
+
+  # ====== 6. 更新设备 ======
+  /api/v1/devices/{id}:
+    put:
+      tags: [设备]
+      summary: 更新设备信息
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: 更新成功
+
+  # ====== 7. 删除设备 ======
+  /api/v1/devices/{id}:
+    delete:
+      tags: [设备]
+      summary: 删除设备
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 删除成功
+
+  # ====== 8. 每日睡眠报告 ======
+  /api/sleep/report/daily:
+    get:
+      tags: [睡眠数据]
+      summary: 获取每日睡眠报告
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: 睡眠报告数据
+
+  # ====== 9. 睡眠分期 ======
+  /api/sleep/stages:
+    get:
+      tags: [睡眠数据]
+      summary: 获取睡眠分期数据
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 分期数据（stage_curve 数组）
+
+  # ====== 10. 噪声数据 ======
+  /api/sleep/noise:
+    get:
+      tags: [睡眠数据]
+      summary: 获取噪声数据
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 噪声时间序列
+
+  # ====== 11. 睡眠摘要 ======
+  /api/sleep/summary:
+    get:
+      tags: [睡眠数据]
+      summary: 获取睡眠摘要统计
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: day
+      responses:
+        '200':
+          description: 含 avg_score/latest_score/record_count
+
+  # ====== 12. 医生列表 ======
+  /api/users/doctors:
+    get:
+      tags: [医生]
+      summary: 获取所有医生列表
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 医生列表 [{id, phone, nickname}]
+
+  # ====== 13. 授权给医生 ======
+  /api/doctor/grant:
+    post:
+      tags: [医生授权]
+      summary: 患者授权给医生
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              oneOf:
+                - required: [doctor_phone]
+                  properties:
+                    doctor_phone:
+                      type: string
+                - required: [doctor_id]
+                  properties:
+                    doctor_id:
+                      type: integer
+      responses:
+        '200':
+          description: 授权成功（status=pending）
+
+  # ====== 14. 撤销授权 ======
+  /api/doctor/revoke:
+    delete:
+      tags: [医生授权]
+      summary: 撤销医生授权
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [doctor_phone]
+              properties:
+                doctor_phone:
+                  type: string
+      responses:
+        '200':
+          description: 撤销成功
+
+  # ====== 15. 已授权医生列表 ======
+  /api/doctor/granted:
+    get:
+      tags: [医生授权]
+      summary: 获取已授权的医生列表
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 已授权医生列表
+
+  # ====== 16. 确认授权 ======
+  /api/doctor/confirm:
+    put:
+      tags: [医生端]
+      summary: 医生确认患者授权（pending → active）
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [auth_id]
+              properties:
+                auth_id:
+                  type: integer
+      responses:
+        '200':
+          description: 确认成功
+
+  # ====== 17. 患者列表 ======
+  /api/doctor/patients:
+    get:
+      tags: [医生端]
+      summary: 医生的患者列表（含最新评分和建议）
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 患者列表含 doctor_note 字段
+
+  # ====== 18. 干预建议 CRUD ======
+  /api/doctor/note:
+    put:
+      tags: [干预建议]
+      summary: 保存干预建议
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [auth_id, note]
+              properties:
+                auth_id:
+                  type: integer
+                note:
+                  type: string
+      responses:
+        '200':
+          description: 保存成功
+    get:
+      tags: [干预建议]
+      summary: 获取干预建议
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: auth_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 建议内容
+
+  # ====== 19. 患者报告数据 ======
+  /api/doctor/patient/data:
+    get:
+      tags: [医生端]
+      summary: 医生查看患者详细报告
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: patient_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 报告数组 + 汇总统计
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "格式: Bearer <jwt_token>"
+
+  schemas:
+    SuccessResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: success
+        data:
+          type: object
+
+    LoginResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            token:
+              type: string
+            user:
+              type: object
+              properties:
+                user_id:
+                  type: integer
+                phone:
+                  type: string
+                nickname:
+                  type: string
+                role:
+                  type: integer
+
+    ListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        data:
+          type: object
+          properties:
+            list:
+              type: array
+              items:
+                type: object
+            total:
+              type: integer

@@ -2,11 +2,12 @@
  * 首页 - 睡眠报告展示
  * 展示睡眠评分、总时长、深睡比例、觉醒次数等核心指标
  * 支持下拉刷新
+ * 性能优化：使用单一状态对象减少 Taro setData 调用次数
  * @author Developer
  * @created 2026-06-22
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text } from '@tarojs/components';
 import Taro, { usePullDownRefresh } from '@tarojs/taro';
 import { request } from '@/services/api';
@@ -28,37 +29,50 @@ interface SleepReport {
   avg_heart_rate: number;
 }
 
+/** 首页状态类型 - 合并多个 useState 为单一对象，减少 setData 次数 */
+interface HomeState {
+  report: SleepReport | null;
+  loading: boolean;
+}
+
+/** 初始状态 */
+const INITIAL_STATE: HomeState = {
+  report: null,
+  loading: true,
+};
+
 const HomePage = () => {
-  const [report, setReport] = useState<SleepReport | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [state, setState] = useState<HomeState>(INITIAL_STATE);
 
   /** 格式化分钟数为 "X小时Y分" */
-  const formatDuration = (minutes: number): string => {
+  const formatDuration = useCallback((minutes: number): string => {
     if (!minutes) return '0分';
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
     return h > 0 ? `${h}h${m > 0 ? m + 'm' : ''}` : `${m}min`;
-  };
+  }, []);
 
   /** 获取睡眠报告 */
-  const fetchReport = async (date?: string) => {
-    setLoading(true);
+  const fetchReport = useCallback(async (date?: string) => {
+    // 合并 loading 和 report 为一次 setState
+    setState({ ...state, loading: true });
     try {
       const data = await request<{ report: SleepReport }>(
         'GET',
         `/api/sleep/report/daily${date ? `?date=${date}` : ''}`
       );
-      setReport(data.report);
+      // 单次更新：loading=false + report 数据
+      setState({ report: data.report, loading: false });
       console.log('[Home] 报告加载成功', data.report?.sleep_score);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '加载失败';
       console.error('[Home]', msg);
       Taro.showToast({ title: msg, icon: 'none' });
+      setState({ ...state, loading: false });
     } finally {
-      setLoading(false);
       Taro.stopPullDownRefresh();
     }
-  };
+  }, [state]);
 
   /** 下拉刷新 - 使用 Taro 原生钩子，支持刷新动画 */
   usePullDownRefresh(() => {
@@ -72,6 +86,8 @@ const HomePage = () => {
     }
     fetchReport();
   }, []);
+
+  const { report, loading } = state;
 
   /** 计算深睡占比 */
   const getDeepRatio = (): string => {
