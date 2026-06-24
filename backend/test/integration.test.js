@@ -9,7 +9,7 @@
 const http = require('http');
 
 // ============ 配置 ============
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.API_URL || 'http://localhost:3000';
 let token = '';
 let userId = 0;
 let deviceId = '';
@@ -122,11 +122,12 @@ async function runTests() {
     console.log('========================================');
 
     // 前置检查：后端是否运行
+    const checkUrl = new URL(BASE_URL);
     process.stdout.write('\n[前置] 检查后端服务... ');
     try {
         await new Promise((resolve, reject) => {
             const req = http.request({
-                hostname: 'localhost', port: 3000, path: '/', method: 'GET', timeout: 3000,
+                hostname: checkUrl.hostname, port: checkUrl.port || 80, path: '/', method: 'GET', timeout: 5000,
             }, (res) => { resolve(true); });
             req.on('error', () => resolve(false));
             req.on('timeout', () => { req.destroy(); resolve(false); });
@@ -135,7 +136,7 @@ async function runTests() {
     } catch (_) {}
     // 简单 ping 检查
     const checkRes = await new Promise((resolve) => {
-        const req = http.request({ hostname: 'localhost', port: 3000, path: '/', method: 'GET', timeout: 3000 }, (res) => {
+        const req = http.request({ hostname: checkUrl.hostname, port: checkUrl.port || 80, path: '/', method: 'GET', timeout: 5000 }, (res) => {
             let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(res.statusCode < 500));
         });
         req.on('error', () => resolve(false));
@@ -144,7 +145,7 @@ async function runTests() {
     });
     if (!checkRes) {
         console.log('\u274C 未连接');
-        console.error('  错误: 后端服务未启动 (http://localhost:3000)');
+        console.error(`  错误: 后端服务未启动 (${BASE_URL})`);
         console.error('  请先启动后端: cd backend && npm run dev');
         process.exit(1);
     }

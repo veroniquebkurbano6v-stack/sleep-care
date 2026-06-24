@@ -344,7 +344,7 @@ app.put('/api/v1/devices/:id', authMiddleware, async (req, res) => {
 
         // 执行更新
         await run(
-            "UPDATE devices SET name = ?, updated_at = datetime('now') WHERE device_id = ?",
+            "UPDATE devices SET name = ?, updated_at = NOW() WHERE device_id = ?",
             [name.trim(), id.trim()]
         );
 
@@ -1073,7 +1073,7 @@ app.put('/api/setting/plan', authMiddleware, async (req, res) => {
 
         await run(
             `UPDATE user_settings SET bedtime = ?, wakeup_time = ?, sunrise_duration = ?,
-             updated_at = datetime('now') WHERE user_id = ?`,
+             updated_at = NOW() WHERE user_id = ?`,
             [bed_time, wake_time, duration, userId]
         );
 
@@ -1139,7 +1139,7 @@ app.post('/api/doctor/grant', authMiddleware, async (req, res) => {
             }
             // 已撤销(status=3) → 重新激活
             await run(
-                `UPDATE doctor_authorizations SET status = 1, updated_at = datetime('now')
+                `UPDATE doctor_authorizations SET status = 1, updated_at = NOW()
                  WHERE id = ?`,
                 [existing.id]
             );
@@ -1158,7 +1158,7 @@ app.post('/api/doctor/grant', authMiddleware, async (req, res) => {
         const expireDate = new Date();
         expireDate.setDate(expireDate.getDate() + 30);
 
-        const authId = existing ? existing.id : getDb().exec('SELECT last_insert_rowid() as id')[0].values[0][0];
+        const authId = existing ? existing.id : (await get('SELECT LAST_INSERT_ID() AS id')).id;
 
         const authRecord = {
             id: authId,
@@ -1207,7 +1207,7 @@ app.delete('/api/doctor/revoke', authMiddleware, async (req, res) => {
 
         // 更新状态为 revoked(3)
         await run(
-            "UPDATE doctor_authorizations SET status = 3, updated_at = datetime('now') WHERE id = ?",
+            "UPDATE doctor_authorizations SET status = 3, updated_at = NOW() WHERE id = ?",
             [Number(auth_id)]
         );
 
@@ -1237,7 +1237,7 @@ app.get('/api/doctor/granted', authMiddleware, async (req, res) => {
              INNER JOIN users u ON a.doctor_id = u.user_id
              WHERE a.patient_id = ?
                AND a.status IN (1, 2)
-               AND a.created_at >= datetime('now', '-30 days')
+               AND a.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
              ORDER BY a.created_at DESC`,
             [patientId]
         );
@@ -1328,7 +1328,7 @@ app.put('/api/doctor/confirm', authMiddleware, async (req, res) => {
         await run(
             `UPDATE doctor_authorizations
              SET status = 2,
-                 updated_at = datetime('now')
+                 updated_at = NOW()
              WHERE id = ?`,
             [Number(auth_id)]
         );
@@ -1499,7 +1499,7 @@ app.put('/api/doctor/note', authMiddleware, async (req, res) => {
 
         // 更新干预建议
         await run(
-            `UPDATE doctor_authorizations SET doctor_note = ?, updated_at = datetime('now') WHERE id = ?`,
+            `UPDATE doctor_authorizations SET doctor_note = ?, updated_at = NOW() WHERE id = ?`,
             [note.trim(), Number(auth_id)]
         );
         saveDatabase();

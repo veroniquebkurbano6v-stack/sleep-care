@@ -8,8 +8,8 @@
 import Taro from '@tarojs/taro';
 import type { ApiResponse } from '@/types';
 
-// 后端服务地址（开发环境）
-const BASE_URL = 'http://localhost:3000';
+// 后端服务地址（线上环境）
+const BASE_URL = 'http://47.99.126.39';
 
 /**
  * 获取本地存储的 Token
