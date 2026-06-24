@@ -1258,6 +1258,188 @@ app.get('/api/doctor/granted', authMiddleware, (req, res) => {
     }
 });
 
+// ============ 医生端 API（第10大节） ============
+
+/**
+ * PUT /api/doctor/confirm
+ * 医生确认授权：将 pending 状态更新为 active
+ */
+app.put('/api/doctor/confirm', authMiddleware, (req, res) => {
+    try {
+        // 验证医生角色
+        if (req.user.role !== 1) {
+            return fail(res, '仅医生可操作此接口', 403);
+        }
+
+        const doctorId = req.user.user_id;
+        const { auth_id } = req.body || {};
+
+        if (!auth_id) {
+            return fail(res, '缺少授权记录ID', 400);
+        }
+
+        // 查找授权记录，确认属于当前医生
+        const authRecord = get(
+            'SELECT id, status FROM doctor_authorizations WHERE id = ? AND doctor_id = ?',
+            [Number(auth_id), doctorId]
+        );
+
+        if (!authRecord) {
+            return fail(res, '授权记录不存在', 404);
+        }
+
+        if (authRecord.status === 2) {
+            return fail(res, '该授权已确认，无需重复操作', 400);
+        }
+
+        if (authRecord.status === 3) {
+            return fail(res, '该授权已被撤销', 400);
+        }
+
+        // 更新状态为 active(2)
+        run(
+            `UPDATE doctor_authorizations
+             SET status = 2,
+                 updated_at = datetime('now')
+             WHERE id = ?`,
+            [Number(auth_id)]
+        );
+
+        saveDatabase();
+
+        console.log(`[confirmDoctor] 医生${doctorId} 确认授权 ${auth_id}`);
+        return ok(res, { id: Number(auth_id), status: 'active' }, '确认成功');
+    } catch (err) {
+        console.error('[confirmDoctor] error:', err);
+        return fail(res, '服务器内部错误', 500);
+    }
+});
+
+/**
+ * GET /api/doctor/patients
+ * 医生查看患者列表（JOIN users 获取患者信息）
+ */
+app.get('/api/doctor/patients', authMiddleware, (req, res) => {
+    try {
+        // 验证医生角色
+        if (req.user.role !== 1) {
+            return fail(res, '仅医生可操作此接口', 403);
+        }
+
+        const doctorId = req.user.user_id;
+
+        // JOIN patients 获取患者信息
+        const rows = all(
+            `SELECT a.id AS auth_id, a.patient_id, a.status, a.created_at as requested_at,
+                    u.nickname, u.phone,
+                    (SELECT sr.sleep_score FROM sleep_reports sr
+                     WHERE sr.user_id = a.patient_id
+                     ORDER BY sr.report_date DESC LIMIT 1) AS latest_score
+             FROM doctor_authorizations a
+             INNER JOIN users u ON a.patient_id = u.user_id
+             WHERE a.doctor_id = ?
+               AND a.status IN (1, 2)
+             ORDER BY a.created_at DESC`,
+            [doctorId]
+        );
+
+        const list = rows.map(row => ({
+            auth_id: row.auth_id,
+            patient_id: row.patient_id,
+            nickname: row.nickname || '未知用户',
+            phone: row.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
+            status: row.status === 1 ? 'pending' : 'active',
+            status_text: row.status === 1 ? '待确认' : '已授权',
+            requested_at: row.requested_at,
+            latest_score: row.latest_score || null,
+        }));
+
+        console.log(`[doctorPatients] 医生${doctorId} 有 ${list.length} 个患者`);
+        return ok(res, { list });
+    } catch (err) {
+        console.error('[doctorPatients] error:', err);
+        return fail(res, '服务器内部错误', 500);
+    }
+});
+
+/**
+ * GET /api/doctor/patient/data
+ * 医生查看患者报告数据（仅 active 可查看）
+ */
+app.get('/api/doctor/patient/data', authMiddleware, (req, res) => {
+    try {
+        // 验证医生角色
+        if (req.user.role !== 1) {
+            return fail(res, '仅医生可操作此接口', 403);
+        }
+
+        const doctorId = req.user.user_id;
+        const { patient_id } = req.query || {};
+
+        if (!patient_id) {
+            return fail(res, '缺少患者ID', 400);
+        }
+
+        // 权限校验：必须是 active 授权
+        const authRecord = get(
+            `SELECT a.id, a.status, u.nickname, u.phone
+             FROM doctor_authorizations a
+             INNER JOIN users u ON a.patient_id = u.user_id
+             WHERE a.doctor_id = ? AND a.patient_id = ? AND a.status = 2`,
+            [doctorId, Number(patient_id)]
+        );
+
+        if (!authRecord) {
+            return fail(res, '无权查看该患者报告（需先确认授权）', 403);
+        }
+
+        // 获取最近7天睡眠报告
+        const reports = all(
+            `SELECT report_date, sleep_score, total_sleep_minutes,
+                    deep_sleep_minutes, rem_sleep_minutes, light_sleep_minutes,
+                    awake_count
+             FROM sleep_reports
+             WHERE user_id = ?
+             ORDER BY report_date DESC
+             LIMIT 7`,
+            [Number(patient_id)]
+        ).reverse(); // 正序排列
+
+        // 计算汇总指标
+        const scores = reports.map(r => r.sleep_score).filter(Boolean);
+        const avgScore = scores.length > 0
+            ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+            : null;
+
+        const data = {
+            patient_name: authRecord.nickname,
+            reports: reports.map(r => ({
+                date: r.report_date,
+                score: r.sleep_score,
+                duration: r.total_sleep_minutes,
+                deep_minutes: r.deep_sleep_minutes,
+                rem_minutes: r.rem_sleep_minutes,
+                light_minutes: r.light_sleep_minutes,
+                awake_count: r.awake_count,
+            })),
+            summary: {
+                avg_score: avgScore,
+                latest_score: scores.length > 0 ? scores[scores.length - 1] : null,
+                record_count: reports.length,
+            },
+        };
+
+        console.log(`[doctorPatientData] 医生${doctorId} 查看患者${patient_id}`);
+        return ok(res, data);
+    } catch (err) {
+        console.error('[doctorPatientData] error:', err);
+        return fail(res, '服务器内部错误', 500);
+    }
+});
+
+// ============ 静态文件服务 ============
+app.use(express.static(__dirname + '/public'));
+
 // ============ 404 处理 ============
 app.use((req, res) => {
     fail(res, `路由不存在: ${req.method} ${req.path}`, 404, 404);
