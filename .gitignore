@@ -29,3 +29,7 @@ sleep_care.db
 
 # WeChat miniprogram private config
 project.private.config.json
+
+# Taro build output & cache
+miniprogram/dist/
+miniprogram/.swc/
