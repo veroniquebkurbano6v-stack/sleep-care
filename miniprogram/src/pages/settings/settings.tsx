@@ -36,9 +36,11 @@ const SettingsPage = () => {
       setSunriseDuration(data.sunrise_duration_minutes || 10);
       console.log('[Settings] 加载成功', data);
     } catch (err) {
+      // 超时或网络错误时使用默认值，不阻塞页面
       const msg = err instanceof Error ? err.message : '加载失败';
       console.error('[Settings]', msg);
-      Taro.showToast({ title: msg, icon: 'none' });
+      // 保持默认值不变，仅提示
+      Taro.showToast({ title: '网络异常，显示默认值', icon: 'none', duration: 2000 });
     } finally {
       setLoading(false);
     }
