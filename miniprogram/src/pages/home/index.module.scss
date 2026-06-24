@@ -226,3 +226,38 @@
   font-size: $font-size-lg;
   color: #d97706;
 }
+
+/* 医生授权入口按钮 */
+.doctorsBtnArea {
+  padding: $spacing-lg $page-padding 0;
+}
+
+.doctorsBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: $spacing-md;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.08), rgba(118, 75, 162, 0.12));
+  border: 2rpx solid rgba(102, 126, 234, 0.3);
+  border-radius: $radius-lg;
+
+  &:active {
+    opacity: 0.8;
+  }
+}
+
+.doctorsBtnIcon {
+  font-size: $font-size-lg;
+}
+
+.doctorsBtnText {
+  font-size: $font-size-md;
+  color: #667eea;
+  font-weight: $font-weight-medium;
+}
+
+.doctorsBtnArrow {
+  font-size: $font-size-lg;
+  color: #667eea;
+}

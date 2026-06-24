@@ -215,6 +215,18 @@ const HomePage = () => {
           <Text className={styles.settingsBtnArrow}>→</Text>
         </View>
       </View>
+
+      {/* 医生授权入口按钮 - goToDoctors */}
+      <View className={styles.doctorsBtnArea}>
+        <View
+          className={styles.doctorsBtn}
+          onClick={() => Taro.navigateTo({ url: '/pages/doctors/doctors' })}
+        >
+          <Text className={styles.doctorsBtnIcon}>👨‍⚕️</Text>
+          <Text className={styles.doctorsBtnText}>医生授权</Text>
+          <Text className={styles.doctorsBtnArrow}>→</Text>
+        </View>
+      </View>
     </View>
   );
 };

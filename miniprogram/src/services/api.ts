@@ -42,6 +42,7 @@ export async function request<T>(method: string, url: string, data?: object): Pr
     method,
     data,
     header,
+    timeout: 15000,
   });
 
   const body = res.data as ApiResponse<T>;
@@ -119,6 +120,24 @@ export const settingApi = {
   /** 更新作息设置 */
   savePlan(data: { bed_time: string; wake_time: string; sunrise_duration_minutes: number }) {
     return request<{ bed_time: string; wake_time: string; sunrise_duration_minutes: number }>('PUT', '/api/setting/plan', data);
+  },
+};
+
+/** 医生授权接口 */
+export const doctorApi = {
+  /** 授权医生 */
+  grant(doctorPhone: string) {
+    return request<{ id: number; doctor_name: string; doctor_phone: string; status: string; expire_date: string }>('POST', '/api/doctor/grant', { doctor_phone: doctorPhone });
+  },
+
+  /** 撤销授权 */
+  revoke(authId: number) {
+    return request<void>('DELETE', `/api/doctor/revoke?auth_id=${authId}`);
+  },
+
+  /** 获取已授权列表 */
+  getGranted() {
+    return request<{ list: Array<{ id: number; doctor_name: string; doctor_phone: string; status: string; status_text: string; expire_date: string }> }>('GET', '/api/doctor/granted');
   },
 };
 

@@ -12,6 +12,7 @@ export default defineAppConfig({
     'pages/mine/index',
     'pages/report/index',
     'pages/settings/settings',
+    'pages/doctors/doctors',
     'pages/index/index',
   ],
   tabBar: {

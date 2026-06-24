@@ -1087,6 +1087,165 @@ app.put('/api/setting/plan', authMiddleware, async (req, res) => {
     }
 });
 
+// ============ 医生授权接口 ============
+
+/**
+ * POST /api/doctor/grant
+ * 授权医生：患者通过手机号添加医生授权
+ */
+app.post('/api/doctor/grant', authMiddleware, (req, res) => {
+    try {
+        const patientId = req.user.user_id;
+        const { doctor_phone } = req.body || {};
+
+        if (!doctor_phone) {
+            return fail(res, '请输入医生手机号', 400);
+        }
+
+        // 查找医生用户（role=1 表示医生）
+        const doctor = get(
+            "SELECT user_id, phone, nickname FROM users WHERE phone = ? AND role = 1 AND status = 0",
+            [doctor_phone]
+        );
+
+        if (!doctor) {
+            return fail(res, '该手机号未注册为医生', 400);
+        }
+
+        // 不能授权自己
+        if (doctor.user_id === patientId) {
+            return fail(res, '不能授权自己', 400);
+        }
+
+        // 检查是否已存在 pending 或 active 状态的授权
+        const existing = get(
+            `SELECT id, status FROM doctor_authorizations
+             WHERE doctor_id = ? AND patient_id = ? AND status IN (1, 2)`,
+            [doctor.user_id, patientId]
+        );
+
+        if (existing) {
+            const statusMap = { 1: 'pending', 2: 'active' };
+            return fail(res, `该医生已在${statusMap[existing.status] || ''}状态，无需重复授权`, 400);
+        }
+
+        // 计算过期时间（30天后）
+        const expireDate = new Date();
+        expireDate.setDate(expireDate.getDate() + 30);
+
+        run(
+            `INSERT INTO doctor_authorizations (doctor_id, patient_id, status)
+             VALUES (?, ?, 1)`,
+            [doctor.user_id, patientId]
+        );
+
+        saveDatabase();
+
+        const authRecord = {
+            id: db.exec('SELECT last_insert_rowid() as id')[0].values[0][0],
+            doctor_id: doctor.user_id,
+            doctor_name: doctor.nickname,
+            doctor_phone: doctor.phone,
+            patient_id: patientId,
+            status: 'pending',
+            expire_date: expireDate.toISOString().slice(0, 10),
+        };
+
+        console.log(`[grantDoctor] 患者${patientId} 授权医生 ${doctor.phone}(${doctor.nickname})`);
+        return ok(res, authRecord, '授权成功');
+    } catch (err) {
+        console.error('[grantDoctor] error:', err);
+        return fail(res, '服务器内部错误', 500);
+    }
+});
+
+/**
+ * DELETE /api/doctor/revoke
+ * 撤销医生授权
+ */
+app.delete('/api/doctor/revoke', authMiddleware, (req, res) => {
+    try {
+        const patientId = req.user.user_id;
+        const { auth_id } = req.query || {};
+
+        if (!auth_id) {
+            return fail(res, '缺少授权记录ID', 400);
+        }
+
+        // 查找授权记录，确认属于当前患者
+        const authRecord = get(
+            'SELECT id, status FROM doctor_authorizations WHERE id = ? AND patient_id = ?',
+            [Number(auth_id), patientId]
+        );
+
+        if (!authRecord) {
+            return fail(res, '授权记录不存在', 404);
+        }
+
+        if (authRecord.status === 3) {
+            return fail(res, '该授权已被撤销', 400);
+        }
+
+        // 更新状态为 revoked(3)
+        run(
+            "UPDATE doctor_authorizations SET status = 3, updated_at = datetime('now') WHERE id = ?",
+            [Number(auth_id)]
+        );
+
+        saveDatabase();
+
+        console.log(`[revokeDoctor] 患者${patientId} 撤销授权 ${auth_id}`);
+        return ok(res, null, '撤销成功');
+    } catch (err) {
+        console.error('[revokeDoctor] error:', err);
+        return fail(res, '服务器内部错误', 500);
+    }
+});
+
+/**
+ * GET /api/doctor/granted
+ * 获取已授权医生列表（JOIN users 表）
+ */
+app.get('/api/doctor/granted', authMiddleware, (req, res) => {
+    try {
+        const patientId = req.user.user_id;
+
+        // JOIN users 查询有效授权列表，过滤过期和撤销的记录
+        const rows = all(
+            `SELECT a.id, a.doctor_id, a.patient_id, a.status, a.created_at as requested_at,
+                    u.phone AS doctor_phone, u.nickname AS doctor_name
+             FROM doctor_authorizations a
+             INNER JOIN users u ON a.doctor_id = u.user_id
+             WHERE a.patient_id = ?
+               AND a.status IN (1, 2)
+               AND a.created_at >= datetime('now', '-30 days')
+             ORDER BY a.created_at DESC`,
+            [patientId]
+        );
+
+        const list = rows.map(row => ({
+            id: row.id,
+            doctor_id: row.doctor_id,
+            doctor_name: row.doctor_name || '未知医生',
+            doctor_phone: row.doctor_phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
+            status: row.status === 1 ? 'pending' : 'active',
+            status_text: row.status === 1 ? '待确认' : '已确认',
+            requested_at: row.requested_at,
+            expire_date: (() => {
+                const d = new Date(row.requested_at);
+                d.setDate(d.getDate() + 30);
+                return d.toISOString().slice(0, 10);
+            })(),
+        }));
+
+        console.log(`[grantedDoctors] 患者${patientId} 有 ${list.length} 条有效授权`);
+        return ok(res, { list });
+    } catch (err) {
+        console.error('[grantedDoctors] error:', err);
+        return fail(res, '服务器内部错误', 500);
+    }
+});
+
 // ============ 404 处理 ============
 app.use((req, res) => {
     fail(res, `路由不存在: ${req.method} ${req.path}`, 404, 404);
