@@ -12,7 +12,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-const { initDatabase, get, run, all, closeDatabase, saveDatabase } = require('./db/connection');
+const { initDatabase, get, run, all, closeDatabase, saveDatabase, getDb } = require('./db/connection');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1117,32 +1117,44 @@ app.post('/api/doctor/grant', authMiddleware, (req, res) => {
             return fail(res, '不能授权自己', 400);
         }
 
-        // 检查是否已存在 pending 或 active 状态的授权
+        // 检查是否已存在授权记录（包括已撤销的）
         const existing = get(
             `SELECT id, status FROM doctor_authorizations
-             WHERE doctor_id = ? AND patient_id = ? AND status IN (1, 2)`,
+             WHERE doctor_id = ? AND patient_id = ?`,
             [doctor.user_id, patientId]
         );
 
         if (existing) {
-            const statusMap = { 1: 'pending', 2: 'active' };
-            return fail(res, `该医生已在${statusMap[existing.status] || ''}状态，无需重复授权`, 400);
+            // 已有 pending 或 active 状态 → 拒绝
+            if (existing.status === 1 || existing.status === 2) {
+                const statusMap = { 1: 'pending', 2: 'active' };
+                return fail(res, `该医生已在${statusMap[existing.status] || ''}状态，无需重复授权`, 400);
+            }
+            // 已撤销(status=3) → 重新激活
+            run(
+                `UPDATE doctor_authorizations SET status = 1, updated_at = datetime('now')
+                 WHERE id = ?`,
+                [existing.id]
+            );
+        } else {
+            // 新建授权记录
+            run(
+                `INSERT INTO doctor_authorizations (doctor_id, patient_id, status)
+                 VALUES (?, ?, 1)`,
+                [doctor.user_id, patientId]
+            );
         }
+
+        saveDatabase();
 
         // 计算过期时间（30天后）
         const expireDate = new Date();
         expireDate.setDate(expireDate.getDate() + 30);
 
-        run(
-            `INSERT INTO doctor_authorizations (doctor_id, patient_id, status)
-             VALUES (?, ?, 1)`,
-            [doctor.user_id, patientId]
-        );
-
-        saveDatabase();
+        const authId = existing ? existing.id : getDb().exec('SELECT last_insert_rowid() as id')[0].values[0][0];
 
         const authRecord = {
-            id: db.exec('SELECT last_insert_rowid() as id')[0].values[0][0],
+            id: authId,
             doctor_id: doctor.user_id,
             doctor_name: doctor.nickname,
             doctor_phone: doctor.phone,
