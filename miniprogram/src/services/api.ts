@@ -63,9 +63,9 @@ export async function request<T>(method: string, url: string, data?: object): Pr
 
 /** Auth 相关接口 */
 export const authApi = {
-  /** 注册 */
+  /** 注册（小程序端默认角色为患者 patient） */
   register(data: { phone: string; password: string; nickname?: string }) {
-    return request<{ user: import('@/types').UserInfo }>('POST', '/api/v1/auth/register', data);
+    return request<{ user: import('@/types').UserInfo }>('POST', '/api/v1/auth/register', { ...data, role: 0 });
   },
 
   /** 登录 */

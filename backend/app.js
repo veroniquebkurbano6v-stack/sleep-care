@@ -70,11 +70,12 @@ app.get('/', (req, res) => {
 // ============ 注册接口 ============
 /**
  * POST /api/v1/auth/register
- * Body: { phone, password, nickname?, gender?, birth_year? }
+ * Body: { phone, password, nickname?, gender?, birth_year?, role? }
+ * role: 0=patient(默认), 1=doctor
  */
 app.post('/api/v1/auth/register', async (req, res) => {
     try {
-        const { phone, password, nickname, gender, birth_year } = req.body || {};
+        const { phone, password, nickname, gender, birth_year, role } = req.body || {};
 
         // 参数校验
         if (!phone || typeof phone !== 'string' || phone.length < 5) {
@@ -93,17 +94,21 @@ app.post('/api/v1/auth/register', async (req, res) => {
         // 加密密码
         const passwordHash = await bcrypt.hash(password, 10);
 
+        // 角色默认为 patient(0)，仅接受 0 或 1
+        const userRole = Number.isInteger(role) ? (role === 1 ? 1 : 0) : 0;
+
         // 插入新用户
         const result = run(
             `INSERT INTO users (phone, nickname, avatar_url, gender, birth_year, password_hash, role, status)
-             VALUES (?, ?, ?, ?, ?, ?, 0, 0)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
             [
                 phone,
                 nickname || '用户',
                 null,
                 Number.isInteger(gender) ? gender : 0,
                 birth_year ? Number(birth_year) : null,
-                passwordHash
+                passwordHash,
+                userRole
             ]
         );
 
@@ -1091,25 +1096,33 @@ app.put('/api/setting/plan', authMiddleware, async (req, res) => {
 
 /**
  * POST /api/doctor/grant
- * 授权医生：患者通过手机号添加医生授权
+ * 授权医生：患者通过手机号或医生ID添加医生授权
  */
 app.post('/api/doctor/grant', authMiddleware, (req, res) => {
     try {
         const patientId = req.user.user_id;
-        const { doctor_phone } = req.body || {};
+        const { doctor_phone, doctor_id } = req.body || {};
 
-        if (!doctor_phone) {
-            return fail(res, '请输入医生手机号', 400);
+        // 支持通过 doctor_id 或 doctor_phone 查找医生
+        let doctor;
+        if (Number.isInteger(doctor_id) && doctor_id > 0) {
+            // 通过 ID 查找
+            doctor = get(
+                "SELECT user_id, phone, nickname FROM users WHERE user_id = ? AND role = 1 AND status = 0",
+                [Number(doctor_id)]
+            );
+        } else if (doctor_phone) {
+            // 通过手机号查找
+            doctor = get(
+                "SELECT user_id, phone, nickname FROM users WHERE phone = ? AND role = 1 AND status = 0",
+                [doctor_phone]
+            );
+        } else {
+            return fail(res, '请提供医生ID或手机号', 400);
         }
 
-        // 查找医生用户（role=1 表示医生）
-        const doctor = get(
-            "SELECT user_id, phone, nickname FROM users WHERE phone = ? AND role = 1 AND status = 0",
-            [doctor_phone]
-        );
-
         if (!doctor) {
-            return fail(res, '该手机号未注册为医生', 400);
+            return fail(res, '该医生不存在或未注册为医生', 400);
         }
 
         // 不能授权自己
@@ -1261,6 +1274,27 @@ app.get('/api/doctor/granted', authMiddleware, (req, res) => {
 // ============ 医生端 API（第10大节） ============
 
 /**
+ * GET /api/users/doctors
+ * 获取所有医生列表（供患者选择授权）
+ */
+app.get('/api/users/doctors', authMiddleware, (req, res) => {
+    try {
+        const rows = all(
+            `SELECT user_id, phone, nickname FROM users WHERE role = 1 AND status = 0 ORDER BY user_id`
+        );
+        const list = rows.map(r => ({
+            id: r.user_id,
+            phone: r.phone,
+            nickname: r.nickname || '未命名医生',
+        }));
+        return ok(res, { list });
+    } catch (err) {
+        console.error('[users/doctors] error:', err);
+        return fail(res, '服务器内部错误', 500);
+    }
+});
+
+/**
  * PUT /api/doctor/confirm
  * 医生确认授权：将 pending 状态更新为 active
  */
@@ -1331,6 +1365,7 @@ app.get('/api/doctor/patients', authMiddleware, (req, res) => {
         // JOIN patients 获取患者信息
         const rows = all(
             `SELECT a.id AS auth_id, a.patient_id, a.status, a.created_at as requested_at,
+                    a.doctor_note,
                     u.nickname, u.phone,
                     (SELECT sr.sleep_score FROM sleep_reports sr
                      WHERE sr.user_id = a.patient_id
@@ -1352,6 +1387,7 @@ app.get('/api/doctor/patients', authMiddleware, (req, res) => {
             status_text: row.status === 1 ? '待确认' : '已授权',
             requested_at: row.requested_at,
             latest_score: row.latest_score || null,
+            doctor_note: row.doctor_note || '',
         }));
 
         console.log(`[doctorPatients] 医生${doctorId} 有 ${list.length} 个患者`);
@@ -1433,6 +1469,92 @@ app.get('/api/doctor/patient/data', authMiddleware, (req, res) => {
         return ok(res, data);
     } catch (err) {
         console.error('[doctorPatientData] error:', err);
+        return fail(res, '服务器内部错误', 500);
+    }
+});
+
+/**
+ * PUT /api/doctor/note
+ * 医生保存干预建议到授权记录的 doctor_note 字段
+ */
+app.put('/api/doctor/note', authMiddleware, (req, res) => {
+    try {
+        if (req.user.role !== 1) {
+            return fail(res, '仅医生可操作此接口', 403);
+        }
+
+        const doctorId = req.user.user_id;
+        const { auth_id, note } = req.body || {};
+
+        if (!auth_id) {
+            return fail(res, '缺少授权记录ID', 400);
+        }
+        if (typeof note !== 'string') {
+            return fail(res, '建议内容必须为文本', 400);
+        }
+
+        // 验证授权记录属于当前医生且为 active 状态
+        const authRecord = get(
+            `SELECT id FROM doctor_authorizations WHERE id = ? AND doctor_id = ? AND status = 2`,
+            [Number(auth_id), doctorId]
+        );
+
+        if (!authRecord) {
+            return fail(res, '授权记录不存在或无权操作', 404);
+        }
+
+        // 更新干预建议
+        run(
+            `UPDATE doctor_authorizations SET doctor_note = ?, updated_at = datetime('now') WHERE id = ?`,
+            [note.trim(), Number(auth_id)]
+        );
+        saveDatabase();
+
+        console.log(`[doctorNote] 医生${doctorId} 更新授权${auth_id}的建议`);
+        return ok(res, { auth_id: Number(auth_id), note: note.trim() }, '建议已保存');
+    } catch (err) {
+        console.error('[doctorNote] error:', err);
+        return fail(res, '服务器内部错误', 500);
+    }
+});
+
+/**
+ * GET /api/doctor/note
+ * 获取医生对某患者的干预建议
+ */
+app.get('/api/doctor/note', authMiddleware, (req, res) => {
+    try {
+        if (req.user.role !== 1) {
+            return fail(res, '仅医生可操作此接口', 403);
+        }
+
+        const doctorId = req.user.user_id;
+        const { auth_id } = req.query || {};
+
+        if (!auth_id) {
+            return fail(res, '缺少授权记录ID', 400);
+        }
+
+        // 查询干预建议（仅 active 授权）
+        const record = get(
+            `SELECT a.id AS auth_id, a.doctor_note, u.nickname, u.phone
+             FROM doctor_authorizations a
+             INNER JOIN users u ON a.patient_id = u.user_id
+             WHERE a.id = ? AND a.doctor_id = ? AND a.status = 2`,
+            [Number(auth_id), doctorId]
+        );
+
+        if (!record) {
+            return fail(res, '授权记录不存在或无权查看', 404);
+        }
+
+        return ok(res, {
+            auth_id: record.auth_id,
+            patient_name: record.nickname,
+            doctor_note: record.doctor_note || '',
+        });
+    } catch (err) {
+        console.error('[doctorNoteGet] error:', err);
         return fail(res, '服务器内部错误', 500);
     }
 });

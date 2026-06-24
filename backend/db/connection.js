@@ -76,7 +76,27 @@ async function initDatabase() {
         console.log('[db] 数据库已初始化并保存到:', DB_PATH);
     }
 
+    // 执行数据库迁移
+    runMigrations();
+
     return db;
+}
+
+/**
+ * 数据库迁移：确保表结构与最新 schema 一致
+ */
+function runMigrations() {
+    try {
+        const cols = all("PRAGMA table_info(doctor_authorizations)");
+        const hasNote = cols.some(c => c.name === 'doctor_note');
+        if (!hasNote) {
+            db.exec('ALTER TABLE doctor_authorizations ADD COLUMN doctor_note TEXT');
+            console.log('[migration] 已添加 doctor_authorizations.doctor_note 列');
+            saveDatabase();
+        }
+    } catch (e) {
+        console.warn('[migration] 迁移跳过:', e.message);
+    }
 }
 
 /**

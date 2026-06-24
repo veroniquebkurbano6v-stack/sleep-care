@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS doctor_authorizations (
     doctor_id INTEGER NOT NULL,
     patient_id INTEGER NOT NULL,
     status INTEGER NOT NULL DEFAULT 1,
+    doctor_note TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (doctor_id) REFERENCES users(user_id) ON DELETE CASCADE,

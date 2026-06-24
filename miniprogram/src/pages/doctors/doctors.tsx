@@ -1,17 +1,24 @@
 /**
  * 医生授权管理页面
- * 实现添加医生授权、查看已授权列表、撤销授权功能
+ * 实现从列表选择医生进行授权、查看已授权列表、撤销授权功能
  * @author Developer
  * @created 2026-06-23
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, Input } from '@tarojs/components';
+import { View, Text } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { request } from '@/services/api';
 import './doctors.scss';
 
-/** 医生授权记录类型 */
+/** 医生选项（来自 /api/users/doctors） */
+interface DoctorItem {
+  id: number;
+  phone: string;
+  nickname: string;
+}
+
+/** 已授权记录 */
 interface DoctorAuth {
   id: number;
   doctor_id: number;
@@ -25,9 +32,20 @@ interface DoctorAuth {
 
 const DoctorsPage = () => {
   const [list, setList] = useState<DoctorAuth[]>([]);
-  const [phoneInput, setPhoneInput] = useState('');
+  const [doctorList, setDoctorList] = useState<DoctorItem[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+
+  /** 加载可选择的医生列表 - loadDoctors */
+  const loadDoctors = async () => {
+    try {
+      const data = await request<{ list: DoctorItem[] }>('GET', '/api/users/doctors');
+      setDoctorList(data.list || []);
+    } catch (err) {
+      console.error('[Doctors] loadDoctors error:', err);
+    }
+  };
 
   /** 加载已授权医生列表 - loadGrantedList */
   const loadGrantedList = async () => {
@@ -46,30 +64,30 @@ const DoctorsPage = () => {
   };
 
   useEffect(() => {
+    loadDoctors();
     loadGrantedList();
   }, []);
 
-  /** 添加授权 - onGrantDoctor */
+  /** 选择医生 - selectDoctor */
+  const selectDoctor = (doctor: DoctorItem) => {
+    setSelectedId(doctor.id === selectedId ? null : doctor.id);
+  };
+
+  /** 授权选中的医生 - onGrantDoctor */
   const onGrantDoctor = async () => {
+    if (!selectedId) {
+      Taro.showToast({ title: '请先选择一位医生', icon: 'none' });
+      return;
+    }
     if (adding) return;
-
-    const phone = phoneInput.trim();
-    if (!phone) {
-      Taro.showToast({ title: '请输入医生手机号', icon: 'none' });
-      return;
-    }
-
-    if (!/^1\d{10}$/.test(phone)) {
-      Taro.showToast({ title: '手机号格式不正确', icon: 'none' });
-      return;
-    }
 
     setAdding(true);
     try {
-      await request<DoctorAuth>('POST', '/api/doctor/grant', { doctor_phone: phone });
+      // 使用 doctor_id 进行授权（第11大节新增支持）
+      await request<DoctorAuth>('POST', '/api/doctor/grant', { doctor_id: selectedId });
       Taro.showToast({ title: '授权成功', icon: 'success' });
-      setPhoneInput('');
-      loadGrantedList(); // 刷新列表
+      setSelectedId(null);
+      loadGrantedList();
     } catch (err) {
       const msg = err instanceof Error ? err.message : '授权失败';
       Taro.showToast({ title: msg, icon: 'none' });
@@ -90,7 +108,7 @@ const DoctorsPage = () => {
         try {
           await request('DELETE', `/api/doctor/revoke?auth_id=${authId}`);
           Taro.showToast({ title: '撤销成功', icon: 'success' });
-          loadGrantedList(); // 刷新列表
+          loadGrantedList();
         } catch (err) {
           const msg = err instanceof Error ? err.message : '撤销失败';
           Taro.showToast({ title: msg, icon: 'none' });
@@ -106,6 +124,12 @@ const DoctorsPage = () => {
       case 'active': return 'status-badge--active';
       default: return '';
     }
+  };
+
+  /** 获取选中医生的名称 */
+  const getSelectedName = () => {
+    const found = doctorList.find(d => d.id === selectedId);
+    return found ? found.nickname : '';
   };
 
   // 加载中状态
@@ -124,16 +148,55 @@ const DoctorsPage = () => {
       {/* 标题 */}
       <View className="doctors-header">
         <Text className="doctors-title">医生授权管理</Text>
-        <Text className="doctors-subtitle">管理您的医生查看权限</Text>
+        <Text className="doctors-subtitle">从下方列表选择一位医生进行授权</Text>
+      </View>
+
+      {/* 可选择的医生列表 */}
+      <View className="doctors-list" style={{ marginBottom: 16 }}>
+        <View style={{ fontSize: 15, fontWeight: 600, color: '#333', marginBottom: 12 }}>
+          可选医生
+        </View>
+        {doctorList.length === 0 && (
+          <View className="doctors-empty">
+            <Text className="doctors-empty-icon">👨‍⚕️</Text>
+            <Text className="doctors-empty-text">暂无可用医生</Text>
+            <Text className="doctors-empty-hint">请联系管理员添加医生账号</Text>
+          </View>
+        )}
+        {doctorList.map((doc) => (
+          <View
+            key={doc.id}
+            className={`doctor-select-card ${selectedId === doc.id ? 'doctor-select-card--active' : ''}`}
+            onClick={() => selectDoctor(doc)}
+          >
+            <View className="doctor-info">
+              <View className="doctor-avatar">
+                <Text>{doc.nickname.charAt(0)}</Text>
+              </View>
+              <View className="doctor-detail">
+                <Text className="doctor-name">{doc.nickname}</Text>
+                <Text className="doctor-phone">{doc.phone}</Text>
+              </View>
+              {selectedId === doc.id && (
+                <View className="select-check">
+                  <Text className="select-check-icon">✓</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        ))}
       </View>
 
       {/* 已授权医生列表 */}
       <View className="doctors-list">
-        {list.length === 0 && !loading && (
+        <View style={{ fontSize: 15, fontWeight: 600, color: '#333', marginBottom: 12 }}>
+          已授权医生
+        </View>
+        {list.length === 0 && (
           <View className="doctors-empty">
-            <Text className="doctors-empty-icon">👨‍⚕️</Text>
+            <Text className="doctors-empty-icon">📋</Text>
             <Text className="doctors-empty-text">暂无授权医生</Text>
-            <Text className="doctors-empty-hint">请在下方添加需要授权的医生</Text>
+            <Text className="doctors-empty-hint">请在上方选择一位医生进行授权</Text>
           </View>
         )}
 
@@ -164,26 +227,20 @@ const DoctorsPage = () => {
         ))}
       </View>
 
-      {/* 底部添加区域 */}
+      {/* 底部操作区域 */}
       <View className="add-area">
-        <View className="add-input-wrap">
-          <Input
-            className="add-input"
-            type="text"
-            placeholder="请输入医生手机号"
-            value={phoneInput}
-            maxlength={11}
-            onInput={(e) => setPhoneInput(e.detail.value)}
-            confirmType="done"
-          />
-          <View
-            className={`add-btn ${adding ? 'add-btn--disabled' : ''}`}
-            onClick={onGrantDoctor}
-          >
-            <Text className="add-btn-text">{adding ? '添加中...' : '添加'}</Text>
-          </View>
+        {selectedId !== null && (
+          <Text style={{ textAlign: 'center', color: '#667eea', fontSize: 13, marginBottom: 8 }}>
+            已选择：{getSelectedName()}
+          </Text>
+        )}
+        <View
+          className={`grant-btn ${adding ? 'grant-btn--disabled' : ''}`}
+          onClick={onGrantDoctor}
+        >
+          <Text className="grant-btn-text">{adding ? '授权中...' : '授权'}</Text>
         </View>
-        <Text className="add-hint">提示：仅可添加已注册的医生账号</Text>
+        <Text className="add-hint">点击上方卡片选择要授权的医生，然后点击授权按钮</Text>
       </View>
     </View>
   );
