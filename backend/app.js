@@ -86,7 +86,7 @@ app.post('/api/v1/auth/register', async (req, res) => {
         }
 
         // 检查手机号是否已注册
-        const existing = get('SELECT user_id FROM users WHERE phone = ?', [phone]);
+        const existing = await get('SELECT user_id FROM users WHERE phone = ?', [phone]);
         if (existing) {
             return fail(res, '该手机号已注册', 409);
         }
@@ -98,7 +98,7 @@ app.post('/api/v1/auth/register', async (req, res) => {
         const userRole = Number.isInteger(role) ? (role === 1 ? 1 : 0) : 0;
 
         // 插入新用户
-        const result = run(
+        const result = await run(
             `INSERT INTO users (phone, nickname, avatar_url, gender, birth_year, password_hash, role, status)
              VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
             [
@@ -113,13 +113,13 @@ app.post('/api/v1/auth/register', async (req, res) => {
         );
 
         // 同时为新用户创建默认设置
-        run(
+        await run(
             `INSERT INTO user_settings (user_id) VALUES (?)`,
             [result.lastID]
         );
 
         // 返回结果（不包含密码哈希）
-        const newUser = get(
+        const newUser = await get(
             'SELECT user_id, phone, nickname, gender, birth_year, role, status, created_at FROM users WHERE user_id = ?',
             [result.lastID]
         );
@@ -146,7 +146,7 @@ app.post('/api/v1/auth/login', async (req, res) => {
         }
 
         // 查询用户
-        const user = get(
+        const user = await get(
             'SELECT user_id, phone, nickname, password_hash, role, status FROM users WHERE phone = ?',
             [phone]
         );
@@ -211,8 +211,8 @@ function authMiddleware(req, res, next) {
 }
 
 // ============ 受保护示例接口 ============
-app.get('/api/v1/users/me', authMiddleware, (req, res) => {
-    const user = get(
+app.get('/api/v1/users/me', authMiddleware, async (req, res) => {
+    const user = await get(
         'SELECT user_id, phone, nickname, gender, birth_year, role, status, created_at FROM users WHERE user_id = ?',
         [req.user.user_id]
     );
@@ -251,9 +251,9 @@ function generateDeviceId() {
 }
 
 // GET /api/v1/devices/list - 查询当前用户的设备列表（按 created_at 降序）
-app.get('/api/v1/devices/list', authMiddleware, (req, res) => {
+app.get('/api/v1/devices/list', authMiddleware, async (req, res) => {
     try {
-        const devices = all(
+        const devices = await all(
             `SELECT device_id, serial_no, name, is_virtual, firmware_version,
                     last_active_time, created_at, updated_at
              FROM devices WHERE user_id = ?
@@ -279,7 +279,7 @@ app.post('/api/v1/devices/add', authMiddleware, async (req, res) => {
         }
 
         // 检查用户设备数量上限（最多10台）
-        const countResult = get('SELECT COUNT(*) AS cnt FROM devices WHERE user_id = ?', [req.user.user_id]);
+        const countResult = await get('SELECT COUNT(*) AS cnt FROM devices WHERE user_id = ?', [req.user.user_id]);
         if (countResult && countResult.cnt >= 10) {
             return fail(res, '设备数量已达上限（10台）', 400);
         }
@@ -295,7 +295,7 @@ app.post('/api/v1/devices/add', authMiddleware, async (req, res) => {
         }
 
         // 插入设备记录
-        run(
+        await run(
             `INSERT INTO devices (device_id, user_id, serial_no, name, is_virtual, firmware_version)
              VALUES (?, ?, ?, ?, ?, 'V1.0.0')`,
             [deviceId, req.user.user_id, serialNo, name.trim(), virtual]
@@ -305,7 +305,7 @@ app.post('/api/v1/devices/add', authMiddleware, async (req, res) => {
         saveDatabase();
 
         // 返回新创建的设备
-        const newDevice = get(
+        const newDevice = await get(
             `SELECT device_id, serial_no, name, is_virtual, firmware_version,
                     last_active_time, created_at, updated_at
              FROM devices WHERE device_id = ?`,
@@ -334,7 +334,7 @@ app.put('/api/v1/devices/:id', authMiddleware, async (req, res) => {
         }
 
         // 验证设备归属
-        const device = get(
+        const device = await get(
             'SELECT device_id FROM devices WHERE device_id = ? AND user_id = ?',
             [id.trim(), req.user.user_id]
         );
@@ -343,7 +343,7 @@ app.put('/api/v1/devices/:id', authMiddleware, async (req, res) => {
         }
 
         // 执行更新
-        run(
+        await run(
             "UPDATE devices SET name = ?, updated_at = datetime('now') WHERE device_id = ?",
             [name.trim(), id.trim()]
         );
@@ -352,7 +352,7 @@ app.put('/api/v1/devices/:id', authMiddleware, async (req, res) => {
         saveDatabase();
 
         // 返回更新后的设备
-        const updatedDevice = get(
+        const updatedDevice = await get(
             `SELECT device_id, serial_no, name, is_virtual, firmware_version,
                     last_active_time, created_at, updated_at
              FROM devices WHERE device_id = ?`,
@@ -377,7 +377,7 @@ app.delete('/api/v1/devices/:id', authMiddleware, async (req, res) => {
         }
 
         // 验证设备归属
-        const device = get(
+        const device = await get(
             'SELECT device_id FROM devices WHERE device_id = ? AND user_id = ?',
             [id.trim(), req.user.user_id]
         );
@@ -386,7 +386,7 @@ app.delete('/api/v1/devices/:id', authMiddleware, async (req, res) => {
         }
 
         // 执行删除
-        run('DELETE FROM devices WHERE device_id = ? AND user_id = ?', [id.trim(), req.user.user_id]);
+        await run('DELETE FROM devices WHERE device_id = ? AND user_id = ?', [id.trim(), req.user.user_id]);
 
         // 立即保存数据库
         saveDatabase();
@@ -407,9 +407,9 @@ app.delete('/api/v1/devices/:id', authMiddleware, async (req, res) => {
  * @param {string} date 日期 YYYY-MM-DD
  * @returns {object} 包含 sleep_score 的报告对象
  */
-function getOrCreateDailyScore(userId, date) {
+async function getOrCreateDailyScore(userId, date) {
     // 步骤1：查询该日期是否已有报告
-    const existing = get(
+    const existing = await get(
         'SELECT sleep_score FROM sleep_reports WHERE user_id = ? AND report_date = ?',
         [userId, date]
     );
@@ -419,7 +419,7 @@ function getOrCreateDailyScore(userId, date) {
     }
 
     // 步骤2：无报告则获取用户设备
-    let device = get(
+    let device = await get(
         'SELECT device_id FROM devices WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
         [userId]
     );
@@ -428,7 +428,7 @@ function getOrCreateDailyScore(userId, date) {
     if (!device) {
         const autoDeviceId = generateDeviceId();
         const autoSerialNo = generateVirtualSerialNo();
-        run(
+        await run(
             `INSERT INTO devices (device_id, user_id, serial_no, name, is_virtual, firmware_version)
              VALUES (?, ?, ?, '默认睡眠监测设备', 1, 'V1.0.0')`,
             [autoDeviceId, userId, autoSerialNo]
@@ -440,7 +440,7 @@ function getOrCreateDailyScore(userId, date) {
     const seed = `${userId}_${device.device_id}_${date}`;
     const mockData = generateMockSleepData(seed);
 
-    run(
+    await run(
         `INSERT INTO sleep_reports (
             user_id, device_id, report_date, sleep_score,
             total_sleep_minutes, deep_sleep_minutes, rem_sleep_minutes,
@@ -470,7 +470,7 @@ function getOrCreateDailyScore(userId, date) {
  * Query: period (day/week/month)
  * 返回：labels（日期标签）、scores（评分数组）、avg_score（平均分）
  */
-app.get('/api/sleep/summary', authMiddleware, (req, res) => {
+app.get('/api/sleep/summary', authMiddleware, async (req, res) => {
     try {
         const { period } = req.query || {};
         const periodType = period || 'day';
@@ -493,7 +493,7 @@ app.get('/api/sleep/summary', authMiddleware, (req, res) => {
                 labels.push(dateStr.slice(5)); // MM-DD格式
 
                 // 查询或生成该日期的评分（懒加载补全）
-                const report = getOrCreateDailyScore(userId, dateStr);
+                const report = await getOrCreateDailyScore(userId, dateStr);
                 scores.push(report.sleep_score);
             }
         } else if (periodType === 'week') {
@@ -511,7 +511,7 @@ app.get('/api/sleep/summary', authMiddleware, (req, res) => {
                 let weekScores = [];
                 for (let d = new Date(weekStart); d <= weekEnd; d.setDate(d.getDate() + 1)) {
                     const dateStr = d.toISOString().slice(0, 10);
-                    const report = getOrCreateDailyScore(userId, dateStr);
+                    const report = await getOrCreateDailyScore(userId, dateStr);
                     weekScores.push(report.sleep_score);
                 }
 
@@ -535,7 +535,7 @@ app.get('/api/sleep/summary', authMiddleware, (req, res) => {
 
                 for (let day = 1; day <= daysInMonth; day++) {
                     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                    const report = getOrCreateDailyScore(userId, dateStr);
+                    const report = await getOrCreateDailyScore(userId, dateStr);
                     monthScores.push(report.sleep_score);
                 }
 
@@ -669,7 +669,7 @@ function generateMockSleepData(seed) {
 }
 
 // GET /api/sleep/report/daily - 查询/生成每日睡眠报告（先查后插模式）
-app.get('/api/sleep/report/daily', authMiddleware, (req, res) => {
+app.get('/api/sleep/report/daily', authMiddleware, async (req, res) => {
     try {
         const { date } = req.query || {};
         const reportDate = date || new Date().toISOString().slice(0, 10); // 默认今天
@@ -680,7 +680,7 @@ app.get('/api/sleep/report/daily', authMiddleware, (req, res) => {
         }
 
         // 步骤1：查询该用户是否已有该日期的报告
-        const existingReport = get(
+        const existingReport = await get(
             `SELECT report_id, user_id, device_id, report_date, sleep_score,
                     total_sleep_minutes, deep_sleep_minutes, rem_sleep_minutes,
                     light_sleep_minutes, awake_minutes, awake_count, avg_heart_rate,
@@ -695,7 +695,7 @@ app.get('/api/sleep/report/daily', authMiddleware, (req, res) => {
         }
 
         // 步骤3：不存在则获取用户的一台设备作为关联设备
-        let device = get(
+        let device = await get(
             'SELECT device_id FROM devices WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
             [req.user.user_id]
         );
@@ -704,7 +704,7 @@ app.get('/api/sleep/report/daily', authMiddleware, (req, res) => {
         if (!device) {
             const autoDeviceId = generateDeviceId();
             const autoSerialNo = generateVirtualSerialNo();
-            run(
+            await run(
                 `INSERT INTO devices (device_id, user_id, serial_no, name, is_virtual, firmware_version)
                  VALUES (?, ?, ?, '默认睡眠监测设备', 1, 'V1.0.0')`,
                 [autoDeviceId, req.user.user_id, autoSerialNo]
@@ -718,7 +718,7 @@ app.get('/api/sleep/report/daily', authMiddleware, (req, res) => {
         const mockData = generateMockSleepData(seed);
 
         // 步骤5：插入数据库
-        run(
+        await run(
             `INSERT INTO sleep_reports (
                 user_id, device_id, report_date, sleep_score,
                 total_sleep_minutes, deep_sleep_minutes, rem_sleep_minutes,
@@ -748,7 +748,7 @@ app.get('/api/sleep/report/daily', authMiddleware, (req, res) => {
         saveDatabase();
 
         // 步骤7：查询并返回新创建的报告
-        const newReport = get(
+        const newReport = await get(
             `SELECT report_id, user_id, device_id, report_date, sleep_score,
                     total_sleep_minutes, deep_sleep_minutes, rem_sleep_minutes,
                     light_sleep_minutes, awake_minutes, awake_count, avg_heart_rate,
@@ -812,7 +812,7 @@ function generateSleepStages(rng) {
 }
 
 // GET /api/sleep/stages - 获取/生成睡眠分期数据（48个数据点，先查后插模式）
-app.get('/api/sleep/stages', authMiddleware, (req, res) => {
+app.get('/api/sleep/stages', authMiddleware, async (req, res) => {
     try {
         const { date } = req.query || {};
         const reportDate = date || new Date().toISOString().slice(0, 10);
@@ -823,7 +823,7 @@ app.get('/api/sleep/stages', authMiddleware, (req, res) => {
         }
 
         // 步骤1：查询该用户该日期的报告
-        const existingReport = get(
+        const existingReport = await get(
             `SELECT report_id, device_id, sleep_stages_json FROM sleep_reports WHERE user_id = ? AND report_date = ?`,
             [req.user.user_id, reportDate]
         );
@@ -841,20 +841,20 @@ app.get('/api/sleep/stages', authMiddleware, (req, res) => {
 
             if (existingReport) {
                 // 有报告但无分期数据 → UPDATE
-                run(
+                await run(
                     'UPDATE sleep_reports SET sleep_stages_json = ? WHERE report_id = ?',
                     [JSON.stringify(stages), existingReport.report_id]
                 );
             } else {
                 // 无报告 → 获取设备并插入完整报告
-                let device = get(
+                let device = await get(
                     'SELECT device_id FROM devices WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
                     [req.user.user_id]
                 );
                 if (!device) {
                     const autoDeviceId = generateDeviceId();
                     const autoSerialNo = generateVirtualSerialNo();
-                    run(
+                    await run(
                         `INSERT INTO devices (device_id, user_id, serial_no, name, is_virtual, firmware_version)
                          VALUES (?, ?, ?, '默认睡眠监测设备', 1, 'V1.0.0')`,
                         [autoDeviceId, req.user.user_id, autoSerialNo]
@@ -864,7 +864,7 @@ app.get('/api/sleep/stages', authMiddleware, (req, res) => {
 
                 const mockData = generateMockSleepData(`${req.user.user_id}_${device.device_id}_${reportDate}`);
                 mockData.sleep_stages_json = JSON.stringify(stages);
-                run(
+                await run(
                     `INSERT INTO sleep_reports (
                         user_id, device_id, report_date, sleep_score,
                         total_sleep_minutes, deep_sleep_minutes, rem_sleep_minutes,
@@ -928,7 +928,7 @@ function generateNoiseData(rng) {
 }
 
 // GET /api/sleep/noise - 获取/生成噪音数据（144个数据点，先查后插模式）
-app.get('/api/sleep/noise', authMiddleware, (req, res) => {
+app.get('/api/sleep/noise', authMiddleware, async (req, res) => {
     try {
         const { date } = req.query || {};
         const reportDate = date || new Date().toISOString().slice(0, 10);
@@ -939,7 +939,7 @@ app.get('/api/sleep/noise', authMiddleware, (req, res) => {
         }
 
         // 步骤1：查询该用户该日期的报告
-        const existingReport = get(
+        const existingReport = await get(
             `SELECT report_id, device_id, noise_json FROM sleep_reports WHERE user_id = ? AND report_date = ?`,
             [req.user.user_id, reportDate]
         );
@@ -957,20 +957,20 @@ app.get('/api/sleep/noise', authMiddleware, (req, res) => {
 
             if (existingReport) {
                 // 有报告但无噪音数据 → UPDATE
-                run(
+                await run(
                     'UPDATE sleep_reports SET noise_json = ? WHERE report_id = ?',
                     [JSON.stringify(noiseData), existingReport.report_id]
                 );
             } else {
                 // 无报告 → 获取设备并插入完整报告
-                let device = get(
+                let device = await get(
                     'SELECT device_id FROM devices WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
                     [req.user.user_id]
                 );
                 if (!device) {
                     const autoDeviceId = generateDeviceId();
                     const autoSerialNo = generateVirtualSerialNo();
-                    run(
+                    await run(
                         `INSERT INTO devices (device_id, user_id, serial_no, name, is_virtual, firmware_version)
                          VALUES (?, ?, ?, '默认睡眠监测设备', 1, 'V1.0.0')`,
                         [autoDeviceId, req.user.user_id, autoSerialNo]
@@ -981,7 +981,7 @@ app.get('/api/sleep/noise', authMiddleware, (req, res) => {
                 const mockData = generateMockSleepData(`${req.user.user_id}_${device.device_id}_${reportDate}`);
                 mockData.noise_json = JSON.stringify(noiseData);
                 mockData.sleep_stages_json = mockData.sleep_stages_json || JSON.stringify(generateSleepStages(seededRandom(`${req.user.user_id}_${reportDate}_stages`)));
-                run(
+                await run(
                     `INSERT INTO sleep_reports (
                         user_id, device_id, report_date, sleep_score,
                         total_sleep_minutes, deep_sleep_minutes, rem_sleep_minutes,
@@ -1021,18 +1021,18 @@ app.get('/api/sleep/noise', authMiddleware, (req, res) => {
  * GET /api/setting/plan
  * 获取用户作息设置（就寝时间、起床时间、日出模拟时长）
  */
-app.get('/api/setting/plan', authMiddleware, (req, res) => {
+app.get('/api/setting/plan', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.user_id;
 
         // 查询用户设置
-        let setting = get(
+        let setting = await get(
             'SELECT bedtime, wakeup_time, sunrise_duration FROM user_settings WHERE user_id = ?',
             [userId]
         );
 
         if (!setting) {
-            run('INSERT INTO user_settings (user_id) VALUES (?)', [userId]);
+            await run('INSERT INTO user_settings (user_id) VALUES (?)', [userId]);
             setting = { bedtime: '23:00', wakeup_time: '07:00', sunrise_duration: 10 };
         }
 
@@ -1066,12 +1066,12 @@ app.put('/api/setting/plan', authMiddleware, async (req, res) => {
         }
 
         // 确保记录存在
-        let setting = get('SELECT id FROM user_settings WHERE user_id = ?', [userId]);
+        let setting = await get('SELECT id FROM user_settings WHERE user_id = ?', [userId]);
         if (!setting) {
-            run('INSERT INTO user_settings (user_id) VALUES (?)', [userId]);
+            await run('INSERT INTO user_settings (user_id) VALUES (?)', [userId]);
         }
 
-        run(
+        await run(
             `UPDATE user_settings SET bedtime = ?, wakeup_time = ?, sunrise_duration = ?,
              updated_at = datetime('now') WHERE user_id = ?`,
             [bed_time, wake_time, duration, userId]
@@ -1092,7 +1092,7 @@ app.put('/api/setting/plan', authMiddleware, async (req, res) => {
  * POST /api/doctor/grant
  * 授权医生：患者通过手机号或医生ID添加医生授权
  */
-app.post('/api/doctor/grant', authMiddleware, (req, res) => {
+app.post('/api/doctor/grant', authMiddleware, async (req, res) => {
     try {
         const patientId = req.user.user_id;
         const { doctor_phone, doctor_id } = req.body || {};
@@ -1101,13 +1101,13 @@ app.post('/api/doctor/grant', authMiddleware, (req, res) => {
         let doctor;
         if (Number.isInteger(doctor_id) && doctor_id > 0) {
             // 通过 ID 查找
-            doctor = get(
+            doctor = await get(
                 "SELECT user_id, phone, nickname FROM users WHERE user_id = ? AND role = 1 AND status = 0",
                 [Number(doctor_id)]
             );
         } else if (doctor_phone) {
             // 通过手机号查找
-            doctor = get(
+            doctor = await get(
                 "SELECT user_id, phone, nickname FROM users WHERE phone = ? AND role = 1 AND status = 0",
                 [doctor_phone]
             );
@@ -1125,7 +1125,7 @@ app.post('/api/doctor/grant', authMiddleware, (req, res) => {
         }
 
         // 检查是否已存在授权记录（包括已撤销的）
-        const existing = get(
+        const existing = await get(
             `SELECT id, status FROM doctor_authorizations
              WHERE doctor_id = ? AND patient_id = ?`,
             [doctor.user_id, patientId]
@@ -1138,14 +1138,14 @@ app.post('/api/doctor/grant', authMiddleware, (req, res) => {
                 return fail(res, `该医生已在${statusMap[existing.status] || ''}状态，无需重复授权`, 400);
             }
             // 已撤销(status=3) → 重新激活
-            run(
+            await run(
                 `UPDATE doctor_authorizations SET status = 1, updated_at = datetime('now')
                  WHERE id = ?`,
                 [existing.id]
             );
         } else {
             // 新建授权记录
-            run(
+            await run(
                 `INSERT INTO doctor_authorizations (doctor_id, patient_id, status)
                  VALUES (?, ?, 1)`,
                 [doctor.user_id, patientId]
@@ -1182,7 +1182,7 @@ app.post('/api/doctor/grant', authMiddleware, (req, res) => {
  * DELETE /api/doctor/revoke
  * 撤销医生授权
  */
-app.delete('/api/doctor/revoke', authMiddleware, (req, res) => {
+app.delete('/api/doctor/revoke', authMiddleware, async (req, res) => {
     try {
         const patientId = req.user.user_id;
         const { auth_id } = req.query || {};
@@ -1192,7 +1192,7 @@ app.delete('/api/doctor/revoke', authMiddleware, (req, res) => {
         }
 
         // 查找授权记录，确认属于当前患者
-        const authRecord = get(
+        const authRecord = await get(
             'SELECT id, status FROM doctor_authorizations WHERE id = ? AND patient_id = ?',
             [Number(auth_id), patientId]
         );
@@ -1206,7 +1206,7 @@ app.delete('/api/doctor/revoke', authMiddleware, (req, res) => {
         }
 
         // 更新状态为 revoked(3)
-        run(
+        await run(
             "UPDATE doctor_authorizations SET status = 3, updated_at = datetime('now') WHERE id = ?",
             [Number(auth_id)]
         );
@@ -1225,12 +1225,12 @@ app.delete('/api/doctor/revoke', authMiddleware, (req, res) => {
  * GET /api/doctor/granted
  * 获取已授权医生列表（JOIN users 表）
  */
-app.get('/api/doctor/granted', authMiddleware, (req, res) => {
+app.get('/api/doctor/granted', authMiddleware, async (req, res) => {
     try {
         const patientId = req.user.user_id;
 
         // JOIN users 查询有效授权列表，过滤过期和撤销的记录
-        const rows = all(
+        const rows = await all(
             `SELECT a.id, a.doctor_id, a.patient_id, a.status, a.created_at as requested_at,
                     u.phone AS doctor_phone, u.nickname AS doctor_name
              FROM doctor_authorizations a
@@ -1271,9 +1271,9 @@ app.get('/api/doctor/granted', authMiddleware, (req, res) => {
  * GET /api/users/doctors
  * 获取所有医生列表（供患者选择授权）
  */
-app.get('/api/users/doctors', authMiddleware, (req, res) => {
+app.get('/api/users/doctors', authMiddleware, async (req, res) => {
     try {
-        const rows = all(
+        const rows = await all(
             `SELECT user_id, phone, nickname FROM users WHERE role = 1 AND status = 0 ORDER BY user_id`
         );
         const list = rows.map(r => ({
@@ -1292,7 +1292,7 @@ app.get('/api/users/doctors', authMiddleware, (req, res) => {
  * PUT /api/doctor/confirm
  * 医生确认授权：将 pending 状态更新为 active
  */
-app.put('/api/doctor/confirm', authMiddleware, (req, res) => {
+app.put('/api/doctor/confirm', authMiddleware, async (req, res) => {
     try {
         // 验证医生角色
         if (req.user.role !== 1) {
@@ -1307,7 +1307,7 @@ app.put('/api/doctor/confirm', authMiddleware, (req, res) => {
         }
 
         // 查找授权记录，确认属于当前医生
-        const authRecord = get(
+        const authRecord = await get(
             'SELECT id, status FROM doctor_authorizations WHERE id = ? AND doctor_id = ?',
             [Number(auth_id), doctorId]
         );
@@ -1325,7 +1325,7 @@ app.put('/api/doctor/confirm', authMiddleware, (req, res) => {
         }
 
         // 更新状态为 active(2)
-        run(
+        await run(
             `UPDATE doctor_authorizations
              SET status = 2,
                  updated_at = datetime('now')
@@ -1347,7 +1347,7 @@ app.put('/api/doctor/confirm', authMiddleware, (req, res) => {
  * GET /api/doctor/patients
  * 医生查看患者列表（JOIN users 获取患者信息）
  */
-app.get('/api/doctor/patients', authMiddleware, (req, res) => {
+app.get('/api/doctor/patients', authMiddleware, async (req, res) => {
     try {
         // 验证医生角色
         if (req.user.role !== 1) {
@@ -1357,7 +1357,7 @@ app.get('/api/doctor/patients', authMiddleware, (req, res) => {
         const doctorId = req.user.user_id;
 
         // JOIN patients 获取患者信息
-        const rows = all(
+        const rows = await all(
             `SELECT a.id AS auth_id, a.patient_id, a.status, a.created_at as requested_at,
                     a.doctor_note,
                     u.nickname, u.phone,
@@ -1396,7 +1396,7 @@ app.get('/api/doctor/patients', authMiddleware, (req, res) => {
  * GET /api/doctor/patient/data
  * 医生查看患者报告数据（仅 active 可查看）
  */
-app.get('/api/doctor/patient/data', authMiddleware, (req, res) => {
+app.get('/api/doctor/patient/data', authMiddleware, async (req, res) => {
     try {
         // 验证医生角色
         if (req.user.role !== 1) {
@@ -1411,7 +1411,7 @@ app.get('/api/doctor/patient/data', authMiddleware, (req, res) => {
         }
 
         // 权限校验：必须是 active 授权
-        const authRecord = get(
+        const authRecord = await get(
             `SELECT a.id, a.status, u.nickname, u.phone
              FROM doctor_authorizations a
              INNER JOIN users u ON a.patient_id = u.user_id
@@ -1424,7 +1424,7 @@ app.get('/api/doctor/patient/data', authMiddleware, (req, res) => {
         }
 
         // 获取最近7天睡眠报告
-        const reports = all(
+        const reports = await all(
             `SELECT report_date, sleep_score, total_sleep_minutes,
                     deep_sleep_minutes, rem_sleep_minutes, light_sleep_minutes,
                     awake_count
@@ -1471,7 +1471,7 @@ app.get('/api/doctor/patient/data', authMiddleware, (req, res) => {
  * PUT /api/doctor/note
  * 医生保存干预建议到授权记录的 doctor_note 字段
  */
-app.put('/api/doctor/note', authMiddleware, (req, res) => {
+app.put('/api/doctor/note', authMiddleware, async (req, res) => {
     try {
         if (req.user.role !== 1) {
             return fail(res, '仅医生可操作此接口', 403);
@@ -1488,7 +1488,7 @@ app.put('/api/doctor/note', authMiddleware, (req, res) => {
         }
 
         // 验证授权记录属于当前医生且为 active 状态
-        const authRecord = get(
+        const authRecord = await get(
             `SELECT id FROM doctor_authorizations WHERE id = ? AND doctor_id = ? AND status = 2`,
             [Number(auth_id), doctorId]
         );
@@ -1498,7 +1498,7 @@ app.put('/api/doctor/note', authMiddleware, (req, res) => {
         }
 
         // 更新干预建议
-        run(
+        await run(
             `UPDATE doctor_authorizations SET doctor_note = ?, updated_at = datetime('now') WHERE id = ?`,
             [note.trim(), Number(auth_id)]
         );
@@ -1516,7 +1516,7 @@ app.put('/api/doctor/note', authMiddleware, (req, res) => {
  * GET /api/doctor/note
  * 获取医生对某患者的干预建议
  */
-app.get('/api/doctor/note', authMiddleware, (req, res) => {
+app.get('/api/doctor/note', authMiddleware, async (req, res) => {
     try {
         if (req.user.role !== 1) {
             return fail(res, '仅医生可操作此接口', 403);
@@ -1530,7 +1530,7 @@ app.get('/api/doctor/note', authMiddleware, (req, res) => {
         }
 
         // 查询干预建议（仅 active 授权）
-        const record = get(
+        const record = await get(
             `SELECT a.id AS auth_id, a.doctor_note, u.nickname, u.phone
              FROM doctor_authorizations a
              INNER JOIN users u ON a.patient_id = u.user_id
@@ -1556,14 +1556,29 @@ app.get('/api/doctor/note', authMiddleware, (req, res) => {
 // ============ 静态文件服务 ============
 app.use(express.static(__dirname + '/public'));
 
-// ============ 统一错误处理中间件 ============
+// ============ 统一错误处理（必须放在所有路由之后）============
+
+/** 404 未匹配路由处理 */
+app.use((req, res) => {
+    return fail(res, `接口不存在: ${req.method} ${req.path}`, 404, 404);
+});
+
 /**
  * 全局异常捕获中间件
  * 捕获所有路由中未处理的同步/异步错误，统一返回格式化响应
- * 必须放在所有路由之后（Express 中间件顺序）
+ * 统一日志格式：[时间] [级别] [方法 路径] 消息
  */
-app.use((err, req, res, next) => {
-    console.error('[全局错误]', err.stack || err);
+app.use((err, req, res, _next) => {
+    const timestamp = new Date().toISOString();
+    const method = req.method;
+    const path = req.path;
+    const errMsg = err.message || '服务器内部错误';
+
+    // 统一格式日志输出
+    console.error(`[${timestamp}] [ERROR] [${method} ${path}] ${errMsg}`);
+    if (process.env.NODE_ENV !== 'production') {
+        console.error(err.stack || '');
+    }
 
     // JWT 相关错误
     if (err.name === 'JsonWebTokenError') {
@@ -1578,48 +1593,17 @@ app.use((err, req, res, next) => {
         return fail(res, '请求体 JSON 格式错误', 400, 400);
     }
     if (err.type === 'params.invalid') {
-        return fail(res, err.message || '参数格式错误', 400, 400);
+        return fail(res, errMsg || '参数格式错误', 400, 400);
     }
 
     // 数据库相关错误
-    if (err.message && (err.message.includes('SQLITE') || err.message.includes('database'))) {
+    if (errMsg.includes('SQLITE') || errMsg.includes('database')) {
         return fail(res, '数据库操作失败', 500, 500);
     }
 
     // 默认服务器内部错误
     const status = err.status || err.statusCode || 500;
-    return fail(res, err.message || '服务器内部错误', status >= 400 ? 1 : 1, status);
-});
-
-// ============ 统一错误处理中间件（必须放在所有路由之后）============
-
-/** 404 未匹配路由处理 */
-app.use((req, res) => {
-    return fail(res, `接口不存在: ${req.method} ${req.path}`, 404, 404);
-});
-
-/**
- * 全局异常捕获中间件
- * 防止未捕获的异步错误导致进程崩溃
- * 统一日志格式：[时间] [级别] [模块] 消息
- */
-app.use((err, req, res, _next) => {
-    const timestamp = new Date().toISOString();
-    const method = req.method;
-    const path = req.path;
-    const errMsg = err.message || '服务器内部错误';
-    const errStack = err.stack || '';
-
-    // 统一格式日志输出
-    console.error(`[${timestamp}] [ERROR] [${method} ${path}] ${errMsg}`);
-    if (process.env.NODE_ENV !== 'production') {
-        console.error(errStack);
-    }
-
-    // 区分已知业务错误和未知系统错误
-    const httpStatus = err.status || err.statusCode || 500;
-    const code = err.code || 500;
-    return fail(res, errMsg, code, httpStatus);
+    return fail(res, errMsg, status >= 400 ? 1 : 1, status);
 });
 
 // ============ 启动服务 ============

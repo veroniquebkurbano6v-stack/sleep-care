@@ -436,7 +436,13 @@ async function api(method, url, body) {
     if (authToken) opts.headers['Authorization'] = 'Bearer ' + authToken;
     if (body) opts.body = JSON.stringify(body);
     const res = await fetch(API_BASE + url, opts);
-    return await res.json();
+    const text = await res.text();
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        console.error('[api] 非JSON响应:', text.slice(0, 200));
+        return { code: -1, message: '服务器返回异常' };
+    }
 }
 
 // ========== Toast 提示 ============
@@ -537,23 +543,26 @@ async function loadPatients() {
             return;
         }
 
-        container.innerHTML = list.map(p => `
+        container.innerHTML = list.map(p => {
+            const escName = (p.nickname || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+            const escPhone = (p.phone || '').replace(/'/g, '&#39;');
+            return `
             <div class="patient-card">
                 <div class="patient-info">
-                    <div class="patient-name">${p.nickname}</div>
-                    <div class="patient-phone">${p.phone}</div>
-                    <div class="patient-meta">最新评分: ${p.latest_score !== null ? p.latest_score : '-'} | 授权时间: ${p.requested_at ? p.requested_at.slice(0, 10) : '-'}</div>
+                    <div class="patient-name">${escName}</div>
+                    <div class="patient-phone">${escPhone}</div>
+                    <div class="patient-meta">最新评分: ${p.latest_score !== null ? p.latest_score : '-'} | 授权时间: ${p.requested_at ? p.requested_at.slice(0,10) : '-'}</div>
                     ${p.doctor_note ? `<div class="patient-meta" style="color:#667eea;margin-top:2px;">已填写建议</div>` : ''}
                 </div>
                 <div style="display:flex;align-items:center;gap:8px">
-                    <span class="status-badge ${p.status === 'pending' ? 'status-pending' : 'status-active'}">${p.status_text}</span>
+                    <span class="status-badge ${p.status === 'pending' ? 'status-pending' : 'status-active'}">${p.status_text || ''}</span>
                     ${p.status === 'pending'
-                        ? `<button class="action-btn btn-confirm" onclick="confirmAuth(${p.auth_id}, '${p.nickname}')">确认授权</button>`
-                        : `<button class="action-btn btn-report" onclick="viewReport(${p.patient_id}, '${p.nickname}', ${p.auth_id})">查看报告</button>`
+                        ? `<button class="action-btn btn-confirm" onclick="confirmAuth(${p.auth_id}, '${escName}')">确认授权</button>`
+                        : `<button class="action-btn btn-report" onclick="viewReport(${p.patient_id}, '${escName}', ${p.auth_id})">查看报告</button>`
                     }
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
     } catch (e) {
         container.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:30px">加载失败，请刷新重试</p>';
     }
@@ -561,15 +570,19 @@ async function loadPatients() {
 
 // ========== 确认授权 ==========
 async function confirmAuth(authId, name) {
-    if (!confirm(`确定要确认对「${name}」的授权吗？`)) return;
-
     try {
+        if (!confirm('确定要确认对「' + name + '」的授权吗？')) return;
+
+        const btn = event && event.target;
+        if (btn) { btn.disabled = true; btn.textContent = '处理中...'; }
+
         const data = await api('PUT', '/api/doctor/confirm', { auth_id: authId });
         if (data.code !== 0) { alert(data.message || '操作失败'); return; }
-        alert('确认成功！');
+        showToast('确认成功！');
         loadPatients();
     } catch (e) {
-        alert('网络错误');
+        console.error('[confirmAuth]', e);
+        alert('操作失败，请刷新重试');
     }
 }
 

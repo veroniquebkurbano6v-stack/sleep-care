@@ -30,12 +30,15 @@ const DB_PATH = path.join(DB_DIR, 'sleep_care.db');
 async function initSqlJsEngine() {
     if (SQL) return SQL;
     try {
-        SQL = require('sql.js');
-        SQL = await SQL.initSqlJs({
+        const sqljsModule = require('sql.js');
+        // 兼容 ESM 导出版本（sql.js >= 1.8）：default 导出就是 initSqlJs 函数
+        const initSqlJs = sqljsModule.default || sqljsModule.initSqlJs || sqljsModule;
+        SQL = await initSqlJs({
             locateFile: file => path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist', file)
         });
         return SQL;
     } catch (e) {
+        console.error('[db] sql.js 加载详情:', e.message);
         throw new Error('SQL.js 加载失败，请确认已安装 sql.js: npm install sql.js');
     }
 }
