@@ -261,3 +261,28 @@
   font-size: $font-size-lg;
   color: #667eea;
 }
+
+/* 退出登录按钮 */
+.logoutBtnArea {
+  padding: $spacing-lg $page-padding $spacing-xl;
+}
+
+.logoutBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-md;
+  border-radius: $radius-lg;
+  border: 2rpx solid rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.05);
+
+  &:active {
+    opacity: 0.8;
+  }
+}
+
+.logoutBtnText {
+  font-size: $font-size-md;
+  color: #ef4444;
+  font-weight: $font-weight-medium;
+}

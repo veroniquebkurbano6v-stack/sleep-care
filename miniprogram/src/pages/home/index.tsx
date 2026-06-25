@@ -113,6 +113,20 @@ const HomePage = () => {
     return `${month}月${day}日 ${weekDays[now.getDay()]}`;
   };
 
+  /** 退出登录 */
+  const handleLogout = useCallback(() => {
+    Taro.showModal({
+      title: '提示',
+      content: '确定要退出登录吗？',
+      success: (res) => {
+        if (res.confirm) {
+          clearAuthInfo();
+          Taro.redirectTo({ url: '/pages/login/index' });
+        }
+      },
+    });
+  }, []);
+
   // 加载中
   if (loading && !report) {
     return (
@@ -241,6 +255,16 @@ const HomePage = () => {
           <Text className={styles.doctorsBtnIcon}>👨‍⚕️</Text>
           <Text className={styles.doctorsBtnText}>医生授权</Text>
           <Text className={styles.doctorsBtnArrow}>→</Text>
+        </View>
+      </View>
+
+      {/* 退出登录按钮 */}
+      <View className={styles.logoutBtnArea}>
+        <View
+          className={styles.logoutBtn}
+          onClick={handleLogout}
+        >
+          <Text className={styles.logoutBtnText}>退出登录</Text>
         </View>
       </View>
     </View>
