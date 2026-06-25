@@ -11,7 +11,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text } from '@tarojs/components';
 import Taro, { usePullDownRefresh } from '@tarojs/taro';
 import { request } from '@/services/api';
-import { isLoggedIn } from '@/utils/auth';
+import { isLoggedIn, clearAuthInfo } from '@/utils/auth';
 import type { ApiResponse } from '@/types';
 import styles from './index.module.scss';
 

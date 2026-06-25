@@ -435,13 +435,18 @@ async function api(method, url, body) {
     };
     if (authToken) opts.headers['Authorization'] = 'Bearer ' + authToken;
     if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(API_BASE + url, opts);
-    const text = await res.text();
     try {
-        return JSON.parse(text);
+        const res = await fetch(API_BASE + url, opts);
+        const text = await res.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            console.error('[api] 非JSON响应:', text.slice(0, 200));
+            return { code: -1, message: '服务器返回异常: ' + res.status };
+        }
     } catch (e) {
-        console.error('[api] 非JSON响应:', text.slice(0, 200));
-        return { code: -1, message: '服务器返回异常' };
+        console.error('[api] 网络错误:', e);
+        return { code: -1, message: '网络错误' };
     }
 }
 
@@ -573,15 +578,15 @@ async function confirmAuth(authId, name) {
     try {
         if (!confirm('确定要确认对「' + name + '」的授权吗？')) return;
 
-        const btn = event && event.target;
-        if (btn) { btn.disabled = true; btn.textContent = '处理中...'; }
-
         const data = await api('PUT', '/api/doctor/confirm', { auth_id: authId });
-        if (data.code !== 0) { alert(data.message || '操作失败'); return; }
+        if (data.code !== 0) {
+            alert(data.message || '操作失败');
+            return;
+        }
         showToast('确认成功！');
-        loadPatients();
+        setTimeout(() => loadPatients(), 500);
     } catch (e) {
-        console.error('[confirmAuth]', e);
+        console.error('[confirmAuth] 错误:', e);
         alert('操作失败，请刷新重试');
     }
 }
